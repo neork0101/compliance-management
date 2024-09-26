@@ -9,11 +9,11 @@
 		<version>3.3.3</version>
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.in</groupId>
-	<artifactId>gateways-security-management</artifactId>
+	<groupId>com.comp</groupId>
+	<artifactId>compliance-management</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>gateways-security-management</name>
-	<description>gateways-security-management springboot app</description>
+	<name>compliance-management</name>
+	<description>compliance project for Spring Boot</description>
 	<url />
 	<licenses>
 		<license />
