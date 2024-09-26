@@ -20,6 +20,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.in.security.util.AppConstants;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse; // Add this
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.media.Content; // Add this
+import io.swagger.v3.oas.annotations.media.Schema;  // Add this
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import com.in.auth.dto.ErrorDetails;
 //import com.in.compliance.dto.ResponseDto;
 import com.in.auth.dto.ResponseDto;
 import com.in.auth.payload.request.LoginRequest;
@@ -49,6 +58,7 @@ import jakarta.validation.Valid;
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
 @RequestMapping("securitymanagement/api/auth")
+@Tag(name = "Authentication Controller", description = "Endpoints for user authentication and registration")
 public class AuthController {
 
 	private static final Logger LOG = LoggerFactory.getLogger(AuthController.class);
@@ -69,6 +79,16 @@ public class AuthController {
 	private JwtUtils jwtUtils;
 
 	@PostMapping("/signin")
+    @Operation(summary = "Authenticate user and return JWT token",
+               description = "Authenticates the user with the provided credentials and returns a JWT token in the Authorization header.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully authenticated",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = UserInfoResponse.class))),
+        @ApiResponse(responseCode = "401", description = "Invalid credentials",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = ErrorDetails.class)))
+    })
 	public ResponseEntity<ResponseDto> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
 
 		LOG.info("Start Method:authenticateUser");
@@ -99,6 +119,16 @@ public class AuthController {
 	}
 
 	@PostMapping("/signup")
+    @Operation(summary = "Register a new user",
+               description = "Creates a new user account with the provided details.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "User registered successfully",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = MessageResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Bad request, invalid input",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = ErrorDetails.class)))
+    })
 	public ResponseEntity<ResponseDto> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
 
 		LOG.info("Start Method:registerUser");

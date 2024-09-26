@@ -3,6 +3,7 @@ package com.in.auth.payload.request;
 import java.util.HashSet;
 import java.util.Set;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -10,17 +11,21 @@ import jakarta.validation.constraints.Size;
 public class SignupRequest {
   @NotBlank
   @Size(min = 3, max = 20)
+  @Schema(description = "Desired username", example = "new_user")
   private String username;
 
   @NotBlank
   @Size(max = 50)
   @Email
+  @Schema(description = "User's email address", example = "new_user@example.com")
   private String email;
-
+  
+  @Schema(description = "Roles to assign to the user", example = "[\"user\", \"admin\"]")
   private Set<String> roles;
 
   @NotBlank
   @Size(min = 6, max = 40)
+  @Schema(description = "Desired password", example = "StrongPass!123")
   private String password;
 
   public SignupRequest(String username, String email, HashSet roles) {

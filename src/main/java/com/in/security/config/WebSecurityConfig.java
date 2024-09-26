@@ -76,6 +76,9 @@ public class WebSecurityConfig {
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth.requestMatchers("/securitymanagement/api/auth/**").permitAll()
 						//.requestMatchers("/securitymanagement/api/vmt/**").permitAll()
+						
+						// Allow Swagger UI and API docs without authentication
+		                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 						.requestMatchers("/securitymanagement/actuator/**").permitAll()
 						.requestMatchers("/securitymanagement/swagger-ui/**").permitAll().anyRequest()
 						.authenticated());

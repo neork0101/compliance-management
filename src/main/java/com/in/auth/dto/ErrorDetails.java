@@ -1,8 +1,15 @@
 package com.in.auth.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 public class ErrorDetails implements ResponseDto{
+    @Schema(description = "HTTP status code", example = "400")
     private int statusCode;
+
+    @Schema(description = "Error message", example = "Invalid credentials")
     private String message;
+
+    @Schema(description = "Detailed error description", example = "Username or password is incorrect")
     private String details;
 
     public ErrorDetails(int statusCode, String message, String details) {

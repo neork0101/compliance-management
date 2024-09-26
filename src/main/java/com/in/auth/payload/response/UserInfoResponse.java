@@ -4,11 +4,20 @@ import java.util.List;
 
 import com.in.auth.dto.ResponseDto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 public class UserInfoResponse implements ResponseDto{
-  private String id;
-  private String username;
-  private String email;
-  private List<String> roles;
+    @Schema(description = "Unique user identifier", example = "6123456789abcdef01234567")
+    private String id;
+
+    @Schema(description = "User's username", example = "john_doe")
+    private String username;
+
+    @Schema(description = "User's email address", example = "john_doe@example.com")
+    private String email;
+
+    @Schema(description = "List of roles assigned to the user", example = "[\"ROLE_USER\", \"ROLE_ADMIN\"]")
+    private List<String> roles;
 
   public UserInfoResponse(String id, String username, String email, List<String> roles) {
     this.id = id;
