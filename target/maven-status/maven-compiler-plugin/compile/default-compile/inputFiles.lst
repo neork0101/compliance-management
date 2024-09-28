@@ -11,6 +11,7 @@ D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security
 D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\auth\service\UserDetailsImpl.java
 D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\auth\service\UserDetailsServiceImpl.java
 D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\GatewaysSecurityManagement.java
+D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\security\config\SwaggerConfig.java
 D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\security\config\WebSecurityConfig.java
 D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\security\exception\GlobalExceptionHandler.java
 D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\gateways-security-management\src\main\java\com\in\security\exception\InvalidUidException.java

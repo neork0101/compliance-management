@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.in.auth.controller.AuthControllerTest
 -------------------------------------------------------------------------------
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.305 s -- in com.in.auth.controller.AuthControllerTest
+Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.483 s -- in com.in.auth.controller.AuthControllerTest
