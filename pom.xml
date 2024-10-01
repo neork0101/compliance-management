@@ -10,10 +10,10 @@
 		<relativePath /> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.in</groupId>
-	<artifactId>gateways-security-management</artifactId>
+	<artifactId>identity-security-management</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>gateways-security-management</name>
-	<description>gateways-security-management springboot app</description>
+	<name>identity-security-management</name>
+	<description>identity-security-management springboot app</description>
 	<url />
 	<licenses>
 		<license />
