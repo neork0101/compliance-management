@@ -1,5 +1,0 @@
-# Created at 2024-10-01T22:38:50.355
-Boot Manifest-JAR contains absolute paths in classpath 'D:\zipped\workspace\ws_Spring\PRO\gateways-security-management\identity-security-management\target\test-classes'
-Hint: <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
-'other' has different root
-

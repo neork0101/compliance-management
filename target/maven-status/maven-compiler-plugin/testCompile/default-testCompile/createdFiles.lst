@@ -1,5 +1,0 @@
-com\in\security\jwt\AuthTokenFilterTest.class
-com\in\auth\controller\AuthControllerTest.class
-com\in\security\jwt\JwtUtilsTest.class
-com\in\auth\test\TestResultLoggerExtension.class
-com\in\auth\service\UserDetailsServiceImplTest.class

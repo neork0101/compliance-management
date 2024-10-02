@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
@@ -18,6 +19,7 @@ import com.in.auth.repository.RoleRepository;
 import jakarta.annotation.PostConstruct;
 
 @SpringBootApplication
+@EnableDiscoveryClient
 //@EnableMongoRepositories("com.in.compliance.repository")
 //@ComponentScan(basePackages = "com.in.compliance") 
 public class IdentitySecurityManagement {

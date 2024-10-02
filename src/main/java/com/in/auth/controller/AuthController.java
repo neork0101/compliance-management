@@ -57,7 +57,7 @@ import jakarta.validation.Valid;
 
 @CrossOrigin(origins = "*", maxAge = 3600)
 @RestController
-@RequestMapping("securitymanagement/api/auth")
+@RequestMapping("/api/auth")
 @Tag(name = "Authentication Controller", description = "Endpoints for user authentication and registration")
 public class AuthController {
 
