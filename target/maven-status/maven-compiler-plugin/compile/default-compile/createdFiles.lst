@@ -15,6 +15,7 @@ com\in\auth\payload\response\UserInfoResponse.class
 com\in\auth\service\UserDetailsServiceImpl.class
 com\in\auth\payload\request\LoginRequest.class
 com\in\security\exception\GlobalExceptionHandler.class
+com\in\auth\payload\response\JwtResponse.class
 com\in\security\models\ERole.class
 com\in\auth\payload\response\MessageResponse.class
 com\in\security\exception\InvalidUidException.class

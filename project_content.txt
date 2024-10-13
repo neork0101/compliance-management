@@ -2260,6 +2260,57 @@ spring.data.mongodb.serverSelectionTimeout=60000
 
 # Server port (choose a unique port for this service)
 server.port=8081
+// File: src/main/resources/application.yml
+
+spring:
+  application:
+    name: identity-security-management
+  data:
+    mongodb:
+     uri: mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
+     socketTimeout: 60000
+     connectTimeout: 60000
+     serverSelectionTimeout: 60000
+
+#server:
+ # port: 8670  # Port on which your application will run
+  #ssl:
+   #enabled: true  # Enables SSL/TLS support
+  # key-store: classpath:certs/compliance-registry.p12  # Path to your keystore file in the classpath
+  # key-store-password: passw0rd  # Password for your keystore
+  # key-store-type: PKCS12  # Type of the keystore (e.g., JKS, PKCS12)
+  # key-alias: compliance-registry  # Alias for your key in the keystore
+  # enabled-protocols: TLSv1.3  # Restricts the server to use only TLSv1.3
+  # # Optional: Specify allowed cipher suites
+   # ciphers: TLS_AES_256_GCM_SHA384,TLS_AES_128_GCM_SHA256
+  # trust-store: classpath:certs/compliance-gateway-truststore.p12
+  # trust-store-password: passw0rd
+  # trust-store-type: PKCS12
+ 
+eureka:
+  instance:
+   preferIpAddress: true  # Use IP address instead of hostname for registration
+   ip-address: ${IDENTITY_IP:localhost}  # IP address of your gateway (uses env variable or defaults to localhost)
+  client:
+   tls:
+    enabled: true
+    trust-store: classpath:certs/compliance-gateway-truststore.p12
+    trust-store-password: passw0rd
+    trust-store-type: PKCS12
+    key-store: classpath:certs/compliance-gateway-truststore.p12
+    key-store-password: passw0rd
+    key-store-type: PKCS12
+   serviceUrl:
+     defaultZone: https://139.59.67.255:8761/eureka/
+
+
+# Keep your existing MongoDB and JWT configurations
+security:
+  app:
+    jwtCookieName: neocompliance
+    jwtSecret: ${JWT_SECRET:3neo38792F423F4428472B4B6250655368566D597133743677397A244326test}
+    jwtExpirationMs: 86400000
+
 
 Resource Files from src/test/resources:
 
