@@ -46,3 +46,28 @@ security:
     jwtCookieName: neocompliance
     jwtSecret: ${JWT_SECRET:3neo38792F423F4428472B4B6250655368566D597133743677397A244326test}
     jwtExpirationMs: 86400000
+
+
+logging:
+   level:
+    root: INFO
+    org.springframework.web: INFO
+    com.in: DEBUG
+   file:
+    name: /root/webapp/identity-management.log
+   pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+
+
+
+
+
+
+
+
+
+
+
+

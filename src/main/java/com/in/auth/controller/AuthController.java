@@ -113,6 +113,10 @@ public class AuthController {
             userDetails.getEmail(), 
             roles
         );
+        
+        LOG.info("User {} successfully authenticated", loginRequest.getUsername());
+        LOG.debug("Generated JWT token for user {}: {}", loginRequest.getUsername(), jwtToken);
+
 
         LOG.info("End Method: authenticateUser");
 
@@ -167,6 +171,7 @@ public class AuthController {
         if (strRoles == null) {
             Role userRole = roleRepository.findByName(ERole.ROLE_USER)
                 .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+            LOG.error("Error: User Role not found.");
             roles.add(userRole);
         } else {
             strRoles.forEach(role -> {
@@ -174,16 +179,19 @@ public class AuthController {
                     case "admin":
                         Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
                             .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+                        LOG.error("Error: Admin Role not found.");
                         roles.add(adminRole);
                         break;
                     case "mod":
                         Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
                             .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+                        LOG.error("Error: Moderator Role not found.");
                         roles.add(modRole);
                         break;
                     default:
                         Role userRole = roleRepository.findByName(ERole.ROLE_USER)
                             .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+                        LOG.error("Error: User Role not found.");
                         roles.add(userRole);
                 }
             });
