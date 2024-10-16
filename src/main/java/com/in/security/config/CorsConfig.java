@@ -18,6 +18,8 @@ public class CorsConfig {
         // Allow all origins for development. In production, specify your allowed origins.
         configuration.setAllowedOrigins(Arrays.asList("*"));
         
+        configuration.setAllowedOriginPatterns(Arrays.asList("*/securitymanagement/api/*"));
+        
         // Allow common HTTP methods
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         
