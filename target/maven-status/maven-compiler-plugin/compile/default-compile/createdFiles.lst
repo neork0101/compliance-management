@@ -1,6 +1,7 @@
 com\in\auth\controller\AuthController.class
 com\in\security\exception\UnauthorisedRoleExceptions.class
 com\in\auth\service\UserDetailsImpl.class
+com\in\security\config\CorsConfig.class
 com\in\security\models\Role.class
 com\in\auth\repository\RoleRepository.class
 com\in\security\jwt\JwtUtils.class
