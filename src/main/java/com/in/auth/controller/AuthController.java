@@ -46,7 +46,7 @@ import com.in.security.models.User;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/identitymanagement/api/auth")
 @Tag(name = "Authentication Controller", description = "Endpoints for user authentication and registration")
 public class AuthController {
 

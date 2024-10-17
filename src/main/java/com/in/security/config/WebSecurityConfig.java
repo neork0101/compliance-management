@@ -68,10 +68,10 @@ public class WebSecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             // Configure authorization rules
             .authorizeHttpRequests(auth -> 
-                auth.requestMatchers("/api/auth/**").permitAll()
+                auth.requestMatchers("/identitymanagement/api/auth/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                    .requestMatchers("/securitymanagement/actuator/**").permitAll()
-                    .requestMatchers("/securitymanagement/swagger-ui/**").permitAll()
+                    .requestMatchers("/identitymanagement/actuator/**").permitAll()
+                    .requestMatchers("/identitymanagement/swagger-ui/**").permitAll()
                     .anyRequest().authenticated()
             );
 
