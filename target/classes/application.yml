@@ -37,7 +37,8 @@ eureka:
     key-store-password: passw0rd
     key-store-type: PKCS12
    serviceUrl:
-     defaultZone: https://139.59.67.255:8761/eureka/
+      #defaultZone: https://139.59.67.255:8761/eureka/
+      defaultZone: https://localhost:8761/eureka/
 
 
 # Keep your existing MongoDB and JWT configurations
