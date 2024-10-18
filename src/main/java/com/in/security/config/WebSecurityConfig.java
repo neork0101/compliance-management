@@ -15,9 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import com.in.auth.service.UserDetailsServiceImpl;
 import com.in.security.jwt.AuthEntryPointJwt;
 import com.in.security.jwt.AuthTokenFilter;
-import com.in.auth.service.UserDetailsServiceImpl;
 
 @Configuration
 @EnableWebSecurity
@@ -28,9 +28,6 @@ public class WebSecurityConfig {
 
     @Autowired
     private AuthEntryPointJwt unauthorizedHandler;
-
-    @Autowired
-    private CorsConfig corsConfig;
 
     @Bean
     public AuthTokenFilter authenticationJwtTokenFilter() {
@@ -45,6 +42,7 @@ public class WebSecurityConfig {
         return authProvider;
     }
 
+    
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
@@ -61,7 +59,7 @@ public class WebSecurityConfig {
             // Disable CSRF as we're using JWT
             .csrf(csrf -> csrf.disable())
             // Use the custom CORS configuration
-            .cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
+            //.cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
             // Set up exception handling
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             // Use stateless session management
