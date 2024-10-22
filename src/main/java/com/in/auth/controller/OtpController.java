@@ -16,16 +16,21 @@ public class OtpController {
     @Autowired
     private OtpService otpService;
 
-    // Send OTP via email
+    /**
+     * Send OTP via email.
+     *
+     * @param email The email address to send the OTP to.
+     * @return ResponseEntity with status and message.
+     */
     @PostMapping("/send-email")
     public ResponseEntity<String> sendOtpByEmail(@RequestParam String email) {
-    	try {
-        String emailBody = otpService.sendOtpByEmail(email);
-        return ResponseEntity.ok("OTP has been sent to your email. "+emailBody);
-    	}catch(Exception e) {
-    		System.out.println("Redis Exception "+e);
-    		return ResponseEntity.ok("Failure");
-    	}
+        try {
+            String emailApiResponse = otpService.sendOtpByEmail(email);
+            return ResponseEntity.ok("OTP has been sent to your email. " + emailApiResponse);
+        } catch (Exception e) {
+            System.out.println("Exception while sending OTP email: " + e);
+            return ResponseEntity.status(500).body("Failed to send OTP email");
+        }
     }
 
     // Send OTP via SMS

@@ -18,6 +18,7 @@ D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\service\UserDetailsServiceImpl.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\IdentitySecurityManagement.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\security\config\SwaggerConfig.java
+D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\security\config\WebClientConfig.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\security\config\WebSecurityConfig.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\security\exception\GlobalExceptionHandler.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\security\exception\InvalidUidException.java

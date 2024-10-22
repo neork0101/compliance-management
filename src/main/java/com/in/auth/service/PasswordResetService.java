@@ -1,12 +1,15 @@
 package com.in.auth.service;
 
-
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import com.in.auth.repository.UserRepository;
 import com.in.security.models.User;
@@ -14,43 +17,60 @@ import com.in.security.models.User;
 @Service
 public class PasswordResetService {
 
-    // Ideally, you would inject your email service and user repository here
-	
     @Autowired
     private UserRepository userRepository;
 
-	/*
-	 * public PasswordResetService(EmailService emailService, UserRepository
-	 * userRepository) { this.emailService = emailService; this.userRepository =
-	 * userRepository; }
-	 */
+    @Value("${email.api.base-url}")
+    private String emailApiBaseUrl;
 
+    @Autowired
+    private WebClient.Builder webClientBuilder;
+
+    /**
+     * Initiates the password reset process by sending a reset link via email.
+     *
+     * @param email The email address of the user requesting password reset.
+     * @return The response from the email API.
+     * @throws Exception If the user is not found.
+     */
     public String initiatePasswordReset(String email) throws Exception {
-        // Step 1: Verify if the email exists in the database
+        // Verify if the email exists in the database
         User user = userRepository.findByEmail(email);
         if (user == null) {
             throw new Exception("User with this email not found");
         }
 
-        // Step 2: Generate a password reset token
+        // Generate a password reset token
         String resetToken = UUID.randomUUID().toString();
 
-        // Step 3: Save the reset token and its expiration to the user's record (in a real app)
+        // Save the reset token and its expiration to the user's record
         user.setResetToken(resetToken);
         user.setTokenExpiration(LocalDateTime.now().plusHours(1)); // Token valid for 1 hour
         userRepository.save(user);
 
-        // Step 4: Construct the password reset URL
+        // Construct the password reset URL
         String resetUrl = "https://139.59.67.255/identitymanagement/api/auth/reset-password?token=" + resetToken;
 
-        // Step 5: Send the reset link to the user's email
-        String emailSubject = "Password Reset Request";
-        String emailBody = "To reset your password, click the link below:\n" + resetUrl;
-        //emailService.sendEmail(email, emailSubject, emailBody);
-        
-        return emailBody;
+        // Prepare request body for email API
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("email", email);
+        requestBody.put("resetLink", resetUrl);
+        requestBody.put("currentYear", String.valueOf(LocalDateTime.now().getYear()));
+        requestBody.put("username", user.getUsername());
+        requestBody.put("validityTime", "60"); // 60 minutes validity time
+
+        // Make HTTP call to email API using WebClient
+        WebClient webClient = webClientBuilder.baseUrl(emailApiBaseUrl).build();
+
+        String response = webClient.post()
+                .uri("/forgot-password/link")
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+        return response;
     }
-    
     public void resetPassword(String token, String newPassword) throws Exception {
         // Find the user with the given reset token
         User user = userRepository.findByResetToken(token);

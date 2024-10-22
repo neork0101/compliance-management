@@ -209,15 +209,20 @@ public class AuthController {
         LOG.info("Method: registerUser - User registered successfully!");
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
     }
-    
+    /**
+     * Handles forgot password requests by initiating the password reset process.
+     *
+     * @param email The email address of the user requesting password reset.
+     * @return ResponseEntity with status and message.
+     */
     @PostMapping("/forgot-password")
     public ResponseEntity<String> forgotPassword(@RequestParam("email") String email) {
         try {
-        	System.out.println( "recieved input request for password reset via email");
-            String url=passwordResetService.initiatePasswordReset(email);
-            return new ResponseEntity<>("Password reset link sent to your email "+url, HttpStatus.OK);
+            System.out.println("Received input request for password reset via email");
+            String emailApiResponse = passwordResetService.initiatePasswordReset(email);
+            return new ResponseEntity<>("Password reset link sent to your email. " + emailApiResponse, HttpStatus.OK);
         } catch (Exception e) {
-        	System.out.println( "Exception"+e);
+            System.out.println("Exception: " + e);
             return new ResponseEntity<>("Error occurred while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }

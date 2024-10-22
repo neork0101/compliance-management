@@ -3,6 +3,7 @@ com\in\security\exception\UnauthorisedRoleExceptions.class
 com\in\auth\service\UserDetailsImpl.class
 com\in\auth\payload\request\ErrorResponse.class
 com\in\security\models\Role.class
+com\in\security\config\WebClientConfig.class
 com\in\auth\repository\RoleRepository.class
 com\in\security\jwt\JwtUtils.class
 com\in\auth\repository\UserRepository.class
