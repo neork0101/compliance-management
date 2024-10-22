@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,31 +19,31 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import com.in.security.util.AppConstants;
-
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.in.auth.dto.ErrorDetails;
 import com.in.auth.dto.ResponseDto;
 import com.in.auth.payload.request.LoginRequest;
 import com.in.auth.payload.request.SignupRequest;
-import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.payload.response.JwtResponse;
+import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.repository.RoleRepository;
 import com.in.auth.repository.UserRepository;
+import com.in.auth.service.PasswordResetService;
 import com.in.auth.service.UserDetailsImpl;
 import com.in.security.jwt.JwtUtils;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
+import com.in.security.util.AppConstants;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 @RestController
@@ -67,6 +68,10 @@ public class AuthController {
 
     @Autowired
     JwtUtils jwtUtils;
+    
+    @Autowired
+    private PasswordResetService passwordResetService;
+
 
     /**
      * Authenticates a user and returns a JWT token.
@@ -203,5 +208,25 @@ public class AuthController {
 
         LOG.info("Method: registerUser - User registered successfully!");
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+    }
+    
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(@RequestParam("email") String email) {
+        try {
+            String url=passwordResetService.initiatePasswordReset(email);
+            return new ResponseEntity<>("Password reset link sent to your email "+url, HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>("Error occurred while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@RequestParam("token") String token, @RequestParam("newPassword") String newPassword) {
+        try {
+            passwordResetService.resetPassword(token, newPassword);
+            return new ResponseEntity<>("Password has been reset successfully", HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>("Invalid or expired token", HttpStatus.BAD_REQUEST);
+        }
     }
 }

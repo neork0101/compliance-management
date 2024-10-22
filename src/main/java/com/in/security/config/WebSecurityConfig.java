@@ -67,6 +67,7 @@ public class WebSecurityConfig {
             // Configure authorization rules
             .authorizeHttpRequests(auth -> 
                 auth.requestMatchers("/identitymanagement/api/auth/**").permitAll()
+                	.requestMatchers("/identitymanagement/api/opt//send-email/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                     .requestMatchers("/identitymanagement/actuator/**").permitAll()
                     .requestMatchers("/identitymanagement/swagger-ui/**").permitAll()

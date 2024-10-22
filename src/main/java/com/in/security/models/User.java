@@ -1,17 +1,20 @@
 package com.in.security.models;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
-
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.DBRef;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
 @Document(collection = "users")
+@Data
 public class User {
   @Id
   private String id;
@@ -28,6 +31,9 @@ public class User {
   @NotBlank
   @Size(max = 120)
   private String password;
+  
+  private String resetToken;
+  private LocalDateTime tokenExpiration;
 
   @DBRef
   private Set<Role> roles = new HashSet<>();
