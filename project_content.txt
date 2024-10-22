@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -30,35 +31,36 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import com.in.security.util.AppConstants;
-
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.tags.Tag;
 
 import com.in.auth.dto.ErrorDetails;
 import com.in.auth.dto.ResponseDto;
 import com.in.auth.payload.request.LoginRequest;
 import com.in.auth.payload.request.SignupRequest;
-import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.payload.response.JwtResponse;
+import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.repository.RoleRepository;
 import com.in.auth.repository.UserRepository;
+import com.in.auth.service.PasswordResetService;
 import com.in.auth.service.UserDetailsImpl;
 import com.in.security.jwt.JwtUtils;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
+import com.in.security.util.AppConstants;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/auth")
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+@RequestMapping("/identitymanagement/api/auth")
 @Tag(name = "Authentication Controller", description = "Endpoints for user authentication and registration")
 public class AuthController {
 
@@ -78,6 +80,10 @@ public class AuthController {
 
     @Autowired
     JwtUtils jwtUtils;
+    
+    @Autowired
+    private PasswordResetService passwordResetService;
+
 
     /**
      * Authenticates a user and returns a JWT token.
@@ -125,6 +131,10 @@ public class AuthController {
             userDetails.getEmail(), 
             roles
         );
+        
+        LOG.info("User {} successfully authenticated", loginRequest.getUsername());
+        LOG.debug("Generated JWT token for user {}: {}", loginRequest.getUsername(), jwtToken);
+
 
         LOG.info("End Method: authenticateUser");
 
@@ -179,6 +189,7 @@ public class AuthController {
         if (strRoles == null) {
             Role userRole = roleRepository.findByName(ERole.ROLE_USER)
                 .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+            LOG.error("Error: User Role not found.");
             roles.add(userRole);
         } else {
             strRoles.forEach(role -> {
@@ -186,16 +197,19 @@ public class AuthController {
                     case "admin":
                         Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
                             .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+                        LOG.error("Error: Admin Role not found.");
                         roles.add(adminRole);
                         break;
                     case "mod":
                         Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
                             .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+                        LOG.error("Error: Moderator Role not found.");
                         roles.add(modRole);
                         break;
                     default:
                         Role userRole = roleRepository.findByName(ERole.ROLE_USER)
                             .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+                        LOG.error("Error: User Role not found.");
                         roles.add(userRole);
                 }
             });
@@ -207,7 +221,80 @@ public class AuthController {
         LOG.info("Method: registerUser - User registered successfully!");
         return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
     }
+    
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(@RequestParam("email") String email) {
+        try {
+        	System.out.println( "recieved input request for password reset via email");
+            String url=passwordResetService.initiatePasswordReset(email);
+            return new ResponseEntity<>("Password reset link sent to your email "+url, HttpStatus.OK);
+        } catch (Exception e) {
+        	System.out.println( "Exception"+e);
+            return new ResponseEntity<>("Error occurred while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@RequestParam("token") String token, @RequestParam("newPassword") String newPassword) {
+        try {
+            passwordResetService.resetPassword(token, newPassword);
+            return new ResponseEntity<>("Password has been reset successfully", HttpStatus.OK);
+        } catch (Exception e) {
+            return new ResponseEntity<>("Invalid or expired token", HttpStatus.BAD_REQUEST);
+        }
+    }
 }
+// File: src/main/java/com/in/auth/controller/OtpController.java
+
+package com.in.auth.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.in.auth.service.OtpService;
+
+@RestController
+@RequestMapping("identitymanagement/api/otp")
+public class OtpController {
+
+    @Autowired
+    private OtpService otpService;
+
+    // Send OTP via email
+    @PostMapping("/send-email")
+    public ResponseEntity<String> sendOtpByEmail(@RequestParam String email) {
+    	try {
+        String emailBody = otpService.sendOtpByEmail(email);
+        return ResponseEntity.ok("OTP has been sent to your email. "+emailBody);
+    	}catch(Exception e) {
+    		System.out.println("Redis Exception "+e);
+    		return ResponseEntity.ok("Failure");
+    	}
+    }
+
+    // Send OTP via SMS
+    @PostMapping("/send-sms")
+    public ResponseEntity<String> sendOtpBySms(@RequestParam String phoneNumber) {
+        otpService.sendOtpBySms(phoneNumber);
+        return ResponseEntity.ok("OTP has been sent to your phone.");
+    }
+
+    // Validate OTP
+    @PostMapping("/validate")
+    public ResponseEntity<String> validateOtp(@RequestParam String identifier, @RequestParam String otp) {
+        boolean isValid = otpService.validateOtp(identifier, otp);
+        if (isValid) {
+            return ResponseEntity.ok("OTP is valid.");
+        } else {
+            return ResponseEntity.status(400).body("Invalid or expired OTP.");
+        }
+    }
+}
+
 // File: src/main/java/com/in/auth/dto/ErrorDetails.java
 
 package com.in.auth.dto;
@@ -262,6 +349,24 @@ package com.in.auth.dto;
 
 public interface ResponseDto {
 
+}
+
+// File: src/main/java/com/in/auth/payload/request/ErrorResponse.java
+
+package com.in.auth.payload.request;
+
+import lombok.Data;
+
+@Data
+public class ErrorResponse {
+	private String status;
+	private String msg;
+	
+	public ErrorResponse(String status, String msg){
+		this.status=status;
+		this.msg=msg;
+		
+	}
 }
 
 // File: src/main/java/com/in/auth/payload/request/LoginRequest.java
@@ -568,6 +673,209 @@ public interface UserRepository extends MongoRepository<User, String> {
   Boolean existsByUsername(String username);
 
   Boolean existsByEmail(String email);
+  
+  // Find a user by their email address
+  User findByEmail(String email);
+
+  // Find a user by their password reset token
+  User findByResetToken(String resetToken);
+}
+
+// File: src/main/java/com/in/auth/service/CustomAuthenticationEntryPoint.java
+
+package com.in.auth.service;
+
+import java.io.IOException;
+import java.io.OutputStream;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.in.auth.payload.request.ErrorResponse;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+@Component("customAuthenticationEntryPoint")
+public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) 
+      throws IOException, ServletException {
+
+    	ErrorResponse re = new ErrorResponse(HttpStatus.UNAUTHORIZED.toString(), "Authentication failed");
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        OutputStream responseStream = response.getOutputStream();
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.writeValue(responseStream, re);
+        responseStream.flush();
+    }
+}
+// File: src/main/java/com/in/auth/service/EmailService.java
+
+package com.in.auth.service;
+
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EmailService {
+
+    private final  JavaMailSender mailSender;
+
+    @Autowired
+    public EmailService(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
+    }
+
+    public void sendEmail(String to, String subject, String body) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setSubject(subject);
+        message.setText(body);
+       // mailSender.send(message);
+    }
+}
+
+// File: src/main/java/com/in/auth/service/OtpService.java
+
+package com.in.auth.service;
+
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+
+import com.in.security.util.OtpUtil;
+
+@Service
+public class OtpService {
+
+    @Autowired
+    private JavaMailSender mailSender;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    private static final int EXPIRATION_MINUTES = 5;
+    private static final String OTP_PREFIX = "otp_"; // Redis key prefix for OTPs
+
+    // Generate OTP and send it via email, storing in Redis with an expiration
+    public String sendOtpByEmail(String email) {
+    	
+        String otp = OtpUtil.generateOTP();
+        long expirationTime = OtpUtil.getExpirationTime(EXPIRATION_MINUTES);
+
+        // Store OTP in Redis with expiration
+        redisTemplate.opsForValue().set(OTP_PREFIX + email, otp, EXPIRATION_MINUTES, TimeUnit.MINUTES);
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(email);
+        message.setSubject("Your OTP Code");
+        message.setText("Your OTP code is: " + otp + "\nIt will expire in " + EXPIRATION_MINUTES + " minutes.");
+        //mailSender.send(message);
+        return message.getText();
+        
+    }
+
+    // Optional: Send OTP via SMS using Twilio or any other SMS service
+    public void sendOtpBySms(String phoneNumber) {
+        String otp = OtpUtil.generateOTP();
+        redisTemplate.opsForValue().set(OTP_PREFIX + phoneNumber, otp, EXPIRATION_MINUTES, TimeUnit.MINUTES);
+
+        // Send OTP via Twilio (or any other SMS provider)
+        // Twilio or another service can be used to send OTP via SMS.
+    }
+
+    // Validate OTP
+    public boolean validateOtp(String identifier, String otp) {
+        String storedOtp = redisTemplate.opsForValue().get(OTP_PREFIX + identifier);
+        return storedOtp != null && storedOtp.equals(otp);
+    }
+}
+
+// File: src/main/java/com/in/auth/service/PasswordResetService.java
+
+package com.in.auth.service;
+
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.in.auth.repository.UserRepository;
+import com.in.security.models.User;
+
+@Service
+public class PasswordResetService {
+
+    // Ideally, you would inject your email service and user repository here
+	@Autowired
+    private EmailService emailService;
+    @Autowired
+    private UserRepository userRepository;
+
+	/*
+	 * public PasswordResetService(EmailService emailService, UserRepository
+	 * userRepository) { this.emailService = emailService; this.userRepository =
+	 * userRepository; }
+	 */
+
+    public String initiatePasswordReset(String email) throws Exception {
+        // Step 1: Verify if the email exists in the database
+        User user = userRepository.findByEmail(email);
+        if (user == null) {
+            throw new Exception("User with this email not found");
+        }
+
+        // Step 2: Generate a password reset token
+        String resetToken = UUID.randomUUID().toString();
+
+        // Step 3: Save the reset token and its expiration to the user's record (in a real app)
+        user.setResetToken(resetToken);
+        user.setTokenExpiration(LocalDateTime.now().plusHours(1)); // Token valid for 1 hour
+        userRepository.save(user);
+
+        // Step 4: Construct the password reset URL
+        String resetUrl = "https://139.59.67.255/identitymanagement/api/auth/reset-password?token=" + resetToken;
+
+        // Step 5: Send the reset link to the user's email
+        String emailSubject = "Password Reset Request";
+        String emailBody = "To reset your password, click the link below:\n" + resetUrl;
+        emailService.sendEmail(email, emailSubject, emailBody);
+        
+        return emailBody;
+    }
+    
+    public void resetPassword(String token, String newPassword) throws Exception {
+        // Find the user with the given reset token
+        User user = userRepository.findByResetToken(token);
+        if (user == null || user.getTokenExpiration().isBefore(LocalDateTime.now())) {
+            throw new Exception("Invalid or expired token");
+        }
+
+        // Update the user's password
+        user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
+        user.setResetToken(null); // Clear the token after a successful reset
+        user.setTokenExpiration(null);
+        userRepository.save(user);
+    }
+
 }
 
 // File: src/main/java/com/in/auth/service/RoleInitializerService.java
@@ -809,50 +1117,6 @@ public class IdentitySecurityManagement {
 
 }
 
-// File: src/main/java/com/in/security/config/CorsConfig.java
-
-package com.in.security.config;
-
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.Arrays;
-
-@Configuration
-public class CorsConfig {
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        
-        // Allow all origins for development. In production, specify your allowed origins.
-        configuration.setAllowedOrigins(Arrays.asList("*"));
-        
-        // Allow common HTTP methods
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        
-        // Allow common headers
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type"));
-        
-        // Allow the Authorization header to be exposed to the client
-        configuration.setExposedHeaders(Arrays.asList("Authorization"));
-        
-        // Allow credentials (cookies, authorization headers, etc.)
-        configuration.setAllowCredentials(true);
-        
-        // How long the response to the preflight request can be cached (1 hour)
-        configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // Apply this configuration to all paths
-        source.registerCorsConfiguration("/**", configuration);
-
-        return source;
-    }
-}
 // File: src/main/java/com/in/security/config/SwaggerConfig.java
 
 // File: src/main/java/com/in/security/config/SwaggerConfig.java
@@ -908,9 +1172,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import com.in.auth.service.UserDetailsServiceImpl;
 import com.in.security.jwt.AuthEntryPointJwt;
 import com.in.security.jwt.AuthTokenFilter;
-import com.in.auth.service.UserDetailsServiceImpl;
 
 @Configuration
 @EnableWebSecurity
@@ -921,9 +1185,6 @@ public class WebSecurityConfig {
 
     @Autowired
     private AuthEntryPointJwt unauthorizedHandler;
-
-    @Autowired
-    private CorsConfig corsConfig;
 
     @Bean
     public AuthTokenFilter authenticationJwtTokenFilter() {
@@ -938,6 +1199,7 @@ public class WebSecurityConfig {
         return authProvider;
     }
 
+    
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
@@ -954,17 +1216,18 @@ public class WebSecurityConfig {
             // Disable CSRF as we're using JWT
             .csrf(csrf -> csrf.disable())
             // Use the custom CORS configuration
-            .cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
+            //.cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
             // Set up exception handling
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             // Use stateless session management
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             // Configure authorization rules
             .authorizeHttpRequests(auth -> 
-                auth.requestMatchers("/api/auth/**").permitAll()
+                auth.requestMatchers("/identitymanagement/api/auth/**").permitAll()
+                	.requestMatchers("/identitymanagement/api/otp/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                    .requestMatchers("/securitymanagement/actuator/**").permitAll()
-                    .requestMatchers("/securitymanagement/swagger-ui/**").permitAll()
+                    .requestMatchers("/identitymanagement/actuator/**").permitAll()
+                    .requestMatchers("/identitymanagement/swagger-ui/**").permitAll()
                     .anyRequest().authenticated()
             );
 
@@ -1364,18 +1627,21 @@ public class Role {
 
 package com.in.security.models;
 
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
-
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.DBRef;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
 @Document(collection = "users")
+@Data
 public class User {
   @Id
   private String id;
@@ -1392,6 +1658,9 @@ public class User {
   @NotBlank
   @Size(max = 120)
   private String password;
+  
+  private String resetToken;
+  private LocalDateTime tokenExpiration;
 
   @DBRef
   private Set<Role> roles = new HashSet<>();
@@ -1458,6 +1727,30 @@ public class AppConstants {
 	}
 	public static final String ROLE_NOTFOUND="Error: Role is not found.";
 
+}
+
+// File: src/main/java/com/in/security/util/OtpUtil.java
+
+package com.in.security.util;
+
+import java.security.SecureRandom;
+
+public class OtpUtil {
+
+    private static final int OTP_LENGTH = 6;
+    private static final SecureRandom secureRandom = new SecureRandom();
+
+    public static String generateOTP() {
+        StringBuilder otp = new StringBuilder();
+        for (int i = 0; i < OTP_LENGTH; i++) {
+            otp.append(secureRandom.nextInt(10)); // Random digit 0-9
+        }
+        return otp.toString();
+    }
+
+    public static long getExpirationTime(int minutes) {
+        return System.currentTimeMillis() + (minutes * 60 * 1000); // Set expiration in minutes
+    }
 }
 
 
@@ -2322,6 +2615,18 @@ Resource Files from src/main/resources:
 
 spring.application.name=identity-security-management
 
+spring.redis.host= 139.59.67.255
+spring.redis.port=6379
+spring.redis.password=work4uneo
+
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=neork0101@gmail.com
+spring.mail.password=work4uneo
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+
+
 # Eureka client configuration
 #eureka.client.serviceUrl.defaultZone=http://139.59.67.255:8761/eureka/
 #eureka.instance.preferIpAddress=true
@@ -2333,7 +2638,7 @@ security.app.jwtSecret=${JWT_SECRET:3neo38792F423F4428472B4B6250655368566D597133
 security.app.jwtExpirationMs=86400000
 
 # MongoDB Configuration
-spring.data.mongodb.uri=mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
+#spring.data.mongodb.uri=mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
 spring.data.mongodb.socketTimeout=60000
 spring.data.mongodb.connectTimeout=60000
 spring.data.mongodb.serverSelectionTimeout=60000
@@ -2381,7 +2686,8 @@ eureka:
     key-store-password: passw0rd
     key-store-type: PKCS12
    serviceUrl:
-     defaultZone: https://139.59.67.255:8761/eureka/
+      defaultZone: https://139.59.67.255:8761/eureka/
+      #defaultZone: https://localhost:8761/eureka/
 
 
 # Keep your existing MongoDB and JWT configurations
@@ -2390,6 +2696,31 @@ security:
     jwtCookieName: neocompliance
     jwtSecret: ${JWT_SECRET:3neo38792F423F4428472B4B6250655368566D597133743677397A244326test}
     jwtExpirationMs: 86400000
+
+
+logging:
+   level:
+    root: INFO
+    org.springframework.web: INFO
+    com.in: DEBUG
+   file:
+    name: /root/webapp/identity-management.log
+   pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 Resource Files from src/test/resources:
@@ -2495,6 +2826,21 @@ POM File (pom.xml):
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
+		<dependency>
+    <groupId>redis.clients</groupId>
+    <artifactId>jedis</artifactId>
+    <version>4.2.3</version> <!-- Use the latest version -->
+</dependency>
+<!-- Redis for OTP storage -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-mail</artifactId>
+</dependency>
+
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>

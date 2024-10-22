@@ -15,8 +15,7 @@ import com.in.security.models.User;
 public class PasswordResetService {
 
     // Ideally, you would inject your email service and user repository here
-	@Autowired
-    private EmailService emailService;
+	
     @Autowired
     private UserRepository userRepository;
 
@@ -47,7 +46,7 @@ public class PasswordResetService {
         // Step 5: Send the reset link to the user's email
         String emailSubject = "Password Reset Request";
         String emailBody = "To reset your password, click the link below:\n" + resetUrl;
-        emailService.sendEmail(email, emailSubject, emailBody);
+        //emailService.sendEmail(email, emailSubject, emailBody);
         
         return emailBody;
     }

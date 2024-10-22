@@ -13,8 +13,7 @@ import com.in.security.util.OtpUtil;
 @Service
 public class OtpService {
 
-    @Autowired
-    private JavaMailSender mailSender;
+
 
     @Autowired
     private StringRedisTemplate redisTemplate;
@@ -24,6 +23,7 @@ public class OtpService {
 
     // Generate OTP and send it via email, storing in Redis with an expiration
     public String sendOtpByEmail(String email) {
+    	
         String otp = OtpUtil.generateOTP();
         long expirationTime = OtpUtil.getExpirationTime(EXPIRATION_MINUTES);
 

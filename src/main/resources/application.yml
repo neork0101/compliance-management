@@ -7,6 +7,10 @@ spring:
      socketTimeout: 60000
      connectTimeout: 60000
      serverSelectionTimeout: 60000
+    redis:
+     host: 139.59.67.255
+     port: 6379
+     password: work4uneo
 
 #server:
  # port: 8670  # Port on which your application will run
