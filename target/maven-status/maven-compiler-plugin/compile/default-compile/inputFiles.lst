@@ -1,6 +1,9 @@
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\controller\AuthController.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\controller\OtpController.java
+D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\dto\CommunicationResponse.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\dto\ErrorDetails.java
+D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\dto\OtpResponse.java
+D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\dto\PasswordResetResponse.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\dto\ResponseDto.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\payload\request\ErrorResponse.java
 D:\zipped\workspace\ws_Spring\PRO\compliance-identity\compliance-management\src\main\java\com\in\auth\payload\request\LoginRequest.java

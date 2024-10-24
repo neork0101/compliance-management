@@ -48,7 +48,7 @@ logging:
     org.springframework.web: INFO
     com.in: DEBUG
   file:
-    name: /root/webapp/communication-service.log
+    name: /root/webapp/identity-management.log
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.in.auth.dto.CommunicationResponse;
 import com.in.auth.dto.ErrorDetails;
 import com.in.auth.dto.ResponseDto;
 import com.in.auth.payload.request.LoginRequest;
@@ -216,24 +217,88 @@ public class AuthController {
      * @return ResponseEntity with status and message.
      */
     @PostMapping("/forgot-password")
-    public ResponseEntity<String> forgotPassword(@RequestParam("email") String email) {
+    @Operation(summary = "Initiate password reset",
+               description = "Sends a password reset link to the user's email.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Password reset link sent successfully",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = CommunicationResponse.class))),
+        @ApiResponse(responseCode = "500", description = "Internal server error",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = ErrorDetails.class)))
+    })
+    public ResponseEntity<ResponseDto> forgotPassword(@RequestParam("email") String email) {
         try {
-            System.out.println("Received input request for password reset via email");
+            LOG.info("Received password reset request for email: {}", email);
+
+            // Initiate the password reset process
             String emailApiResponse = passwordResetService.initiatePasswordReset(email);
-            return new ResponseEntity<>("Password reset link sent to your email. " + emailApiResponse, HttpStatus.OK);
+
+            // Create a response DTO with status, message, and data
+            CommunicationResponse<String> response = new CommunicationResponse<>(
+                "SUCCESS",
+                "Password reset link sent to your email.",
+                emailApiResponse // You can include additional data if needed
+            );
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            System.out.println("Exception: " + e);
-            return new ResponseEntity<>("Error occurred while processing the request", HttpStatus.INTERNAL_SERVER_ERROR);
+            LOG.error("Exception occurred while processing password reset request for email: {}", email, e);
+
+            // Create an error response DTO with status code, message, and details
+            ErrorDetails errorDetails = new ErrorDetails(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Error occurred while processing the request",
+                e.getMessage()
+            );
+
+            return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-    
+
+    /**
+     * Resets the user's password using the provided token and new password.
+     *
+     * @param token       The password reset token.
+     * @param newPassword The new password to set.
+     * @return ResponseEntity with status and message.
+     */
     @PostMapping("/reset-password")
-    public ResponseEntity<String> resetPassword(@RequestParam("token") String token, @RequestParam("newPassword") String newPassword) {
+    @Operation(summary = "Reset password",
+               description = "Resets the user's password using the provided token.")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Password reset successfully",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = CommunicationResponse.class))),
+        @ApiResponse(responseCode = "400", description = "Invalid or expired token",
+                     content = @Content(mediaType = "application/json",
+                                        schema = @Schema(implementation = ErrorDetails.class)))
+    })
+    public ResponseEntity<ResponseDto> resetPassword(@RequestParam("token") String token, @RequestParam("newPassword") String newPassword) {
         try {
+            LOG.info("Password reset attempt with token: {}", token);
+
+            // Reset the password using the token and new password
             passwordResetService.resetPassword(token, newPassword);
-            return new ResponseEntity<>("Password has been reset successfully", HttpStatus.OK);
+
+            // Create a response DTO with status and message
+            CommunicationResponse<Void> response = new CommunicationResponse<>(
+                "SUCCESS",
+                "Password has been reset successfully."
+            );
+
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return new ResponseEntity<>("Invalid or expired token", HttpStatus.BAD_REQUEST);
+            LOG.error("Exception occurred while resetting password with token: {}", token, e);
+
+            // Create an error response DTO with status code, message, and details
+            ErrorDetails errorDetails = new ErrorDetails(
+                HttpStatus.BAD_REQUEST.value(),
+                "Invalid or expired token",
+                e.getMessage()
+            );
+
+            return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
         }
     }
 }
