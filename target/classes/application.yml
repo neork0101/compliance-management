@@ -19,6 +19,7 @@ spring:
 email:
   api:
     base-url: http://139.59.67.255:8093/communication/emails
+    password-reset-url: http://146.190.11.82:5173/signin/reset-password
 
 eureka:
   instance:

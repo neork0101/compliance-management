@@ -3,6 +3,7 @@ com\in\security\exception\UnauthorisedRoleExceptions.class
 com\in\auth\service\UserDetailsImpl.class
 com\in\auth\dto\PasswordResetResponse.class
 com\in\auth\payload\request\ErrorResponse.class
+com\in\auth\controller\UserController.class
 com\in\auth\dto\CommunicationResponse.class
 com\in\security\models\Role.class
 com\in\security\config\WebClientConfig.class

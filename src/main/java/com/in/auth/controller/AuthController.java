@@ -71,7 +71,7 @@ public class AuthController {
     JwtUtils jwtUtils;
     
     @Autowired
-    private PasswordResetService passwordResetService;
+    PasswordResetService passwordResetService;
 
 
     /**

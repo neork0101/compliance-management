@@ -22,6 +22,9 @@ public class PasswordResetService {
 
     @Value("${email.api.base-url}")
     private String emailApiBaseUrl;
+    
+    @Value("${email.api.password-reset-url}")
+    private String passwordResetUrl="http://146.190.11.82:5173/signin/reset-password";
 
     @Autowired
     private WebClient.Builder webClientBuilder;
@@ -49,7 +52,7 @@ public class PasswordResetService {
         userRepository.save(user);
 
         // Construct the password reset URL
-        String resetUrl = "https://139.59.67.255/identitymanagement/api/auth/reset-password?token=" + resetToken;
+        String resetUrl = passwordResetUrl+"?token=" + resetToken;
 
         // Prepare request body for email API
         Map<String, Object> requestBody = new HashMap<>();
