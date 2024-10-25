@@ -8,14 +8,14 @@ import lombok.Data;
 public class CommunicationResponse<T> implements ResponseDto {
     private String status;
     private String message;
-    private T data;
+    private Object data;
     
     public CommunicationResponse(String status, String message) {
         this.status = status;
         this.message = message;
     }
     
-    public CommunicationResponse(String status, String message, T data) {
+    public CommunicationResponse(String status, String message, Object data) {
         this.status = status;
         this.message = message;
         this.data = data;

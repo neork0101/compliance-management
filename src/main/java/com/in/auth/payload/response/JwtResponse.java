@@ -29,6 +29,13 @@ public class JwtResponse implements ResponseDto {
         this.email = email;
         this.roles = roles;
     }
+    
+    public JwtResponse( String id, String username, String email, List<String> roles) {
+        this.id = id;
+        this.username = username;
+        this.email = email;
+        this.roles = roles;
+    }
 
     // Getters and setters
 

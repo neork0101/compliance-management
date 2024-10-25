@@ -26,7 +26,7 @@ public class OtpService {
     @Autowired
     private UserRepository userRepository;
 
-    private static final int EXPIRATION_MINUTES = 5;
+    private static final int EXPIRATION_MINUTES = 15;
     private static final String OTP_PREFIX = "otp_"; // Redis key prefix for OTPs
 
     @Value("${email.api.base-url}")

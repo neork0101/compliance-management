@@ -1,8 +1,12 @@
 package com.in.auth.controller;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -11,7 +15,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.in.auth.dto.CommunicationResponse;
 import com.in.auth.dto.ErrorDetails;
 import com.in.auth.dto.ResponseDto;
+import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.service.OtpService;
+import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.service.UserDetailsServiceImpl;
+import com.in.security.jwt.JwtUtils;
+import com.in.security.models.User;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,6 +31,12 @@ public class OtpController {
 
     @Autowired
     private OtpService otpService;
+    
+    @Autowired
+    private JwtUtils jwtUtils;
+    
+    @Autowired
+    private UserDetailsServiceImpl userDetailsServiceImpl;
 
     /**
      * Send OTP via email.
@@ -80,13 +95,31 @@ public class OtpController {
 
             boolean isValid = otpService.validateOtp(identifier, otp);
             if (isValid) {
-                // Create a response DTO with status and message
-                CommunicationResponse<Void> response = new CommunicationResponse<>(
-                    "SUCCESS",
-                    "OTP is valid."
-                );
+                                
+                User user = userDetailsServiceImpl.loadUserByEmail(identifier);
+                                
+                if(user == null  || user.getId() == null) {
+                	log.info("Method: validateOtp - Error: User not found for email! " + identifier);
+                     return ResponseEntity.badRequest()
+                         .body(new MessageResponse("Error: User not found for given email!"));
+                }
+                UserDetails userDetails = UserDetailsImpl.build(user);
+                List<String> roles = UserDetailsImpl.build(user).getAuthorities().stream()
+                        .map(item -> item.getAuthority())
+                        .collect(Collectors.toList());
+                	
+                
+                String jwtToken = jwtUtils.generateToken(userDetails);
 
+             // Create a response DTO with status and message
+                CommunicationResponse response = new CommunicationResponse<>(
+                    "SUCCESS",
+                    "OTP is valid.",
+                    jwtToken
+                );
+                
                 return ResponseEntity.ok(response);
+                
             } else {
                 // Create an error response DTO
                 ErrorDetails errorDetails = new ErrorDetails(

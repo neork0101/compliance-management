@@ -105,16 +105,16 @@ public class AuthController {
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
         // Generate JWT token
-        String jwtToken = jwtUtils.generateToken(userDetails);
+        //String jwtToken = jwtUtils.generateToken(userDetails);
 
         // Get user roles
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(item -> item.getAuthority())
                 .collect(Collectors.toList());
 
-        // Create JwtResponse object
+        // Create Response object
         JwtResponse jwtResponse = new JwtResponse(
-            jwtToken,
+           // jwtToken,
             userDetails.getId(), 
             userDetails.getUsername(), 
             userDetails.getEmail(), 
@@ -122,14 +122,13 @@ public class AuthController {
         );
         
         LOG.info("User {} successfully authenticated", loginRequest.getUsername());
-        LOG.debug("Generated JWT token for user {}: {}", loginRequest.getUsername(), jwtToken);
 
 
         LOG.info("End Method: authenticateUser");
 
         // Return ResponseEntity with JWT in header and body
         return ResponseEntity.ok()
-            .header("Authorization", "Bearer " + jwtToken)
+           // .header("Authorization", "Bearer " + jwtToken)
             .body(jwtResponse);
     }
 
