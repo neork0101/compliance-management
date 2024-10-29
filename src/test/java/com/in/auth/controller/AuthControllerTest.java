@@ -1,11 +1,18 @@
 package com.in.auth.controller;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,11 +39,11 @@ import com.in.auth.payload.request.SignupRequest;
 import com.in.auth.repository.RoleRepository;
 import com.in.auth.repository.UserRepository;
 import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.test.TestResultLoggerExtension;
 import com.in.security.jwt.JwtUtils;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
-import com.in.auth.test.TestResultLoggerExtension;
 
 /**
  * Comprehensive test class for the AuthController.

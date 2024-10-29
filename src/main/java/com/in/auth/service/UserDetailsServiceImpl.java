@@ -1,20 +1,27 @@
 package com.in.auth.service;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.in.security.models.User;
 import com.in.auth.repository.UserRepository;
+import com.in.security.models.User;
 
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
 	
   @Autowired
   private UserRepository userRepository;
+  
+  @Value("${identity.disable2FA.allowed-roles}")
+  private List<String> allowedRoles;
+
 
   /**
    * 
@@ -48,5 +55,13 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
       return user;
   }
+  
+  public boolean skip2FA(UserDetails userDetails) {
+
+	    // Extract authorities from userDetails and check for intersection with allowAccess
+	    return userDetails.getAuthorities().stream()
+	            .map(item -> item.getAuthority())
+	            .anyMatch(allowedRoles::contains);
+	}
 
 }

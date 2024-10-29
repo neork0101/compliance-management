@@ -15,6 +15,11 @@ spring:
       port: 6379
       password: work4uneo
 
+identity:
+  disable2FA:
+    allowed-roles:
+      - SUPERADMIN
+
 # Email API configuration
 email:
   api:
