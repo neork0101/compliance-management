@@ -3,6 +3,7 @@ com\in\security\exception\UnauthorisedRoleExceptions.class
 com\in\auth\service\UserDetailsImpl.class
 com\in\auth\dto\PasswordResetResponse.class
 com\in\auth\payload\request\ErrorResponse.class
+META-INF\spring-configuration-metadata.json
 com\in\auth\controller\UserController.class
 com\in\auth\dto\CommunicationResponse.class
 com\in\security\models\Role.class
@@ -16,6 +17,7 @@ com\in\auth\service\RoleInitializerService.class
 com\in\security\config\WebSecurityConfig.class
 com\in\security\exception\JwtTokenException.class
 com\in\auth\dto\ResponseDto.class
+com\in\security\config\SecurityProperties.class
 com\in\auth\payload\response\UserInfoResponse.class
 com\in\auth\service\UserDetailsServiceImpl.class
 com\in\auth\payload\request\LoginRequest.class

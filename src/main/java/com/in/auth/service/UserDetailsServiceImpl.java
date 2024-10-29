@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.in.auth.repository.UserRepository;
+import com.in.security.config.SecurityProperties;
 import com.in.security.models.User;
 
 @Service
@@ -19,8 +20,10 @@ public class UserDetailsServiceImpl implements UserDetailsService {
   @Autowired
   private UserRepository userRepository;
   
-  @Value("${identity.disable2FA.allowed-roles}")
-  private List<String> allowedRoles;
+  
+  
+  @Autowired
+  private SecurityProperties securityProperties;
 
 
   /**
@@ -61,7 +64,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 	    // Extract authorities from userDetails and check for intersection with allowAccess
 	    return userDetails.getAuthorities().stream()
 	            .map(item -> item.getAuthority())
-	            .anyMatch(allowedRoles::contains);
+	            .anyMatch(securityProperties.getAllowedRoles()::contains);
 	}
 
 }

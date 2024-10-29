@@ -1,7 +1,9 @@
 package com.in.auth.controller;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -16,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -96,33 +99,52 @@ public class AuthController {
 				new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
 		// Set the authentication in the SecurityContext
-		SecurityContextHolder.getContext().setAuthentication(authentication);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
 
-		// Get user details
-		UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        // Get user details
+        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
-		String jwtToken = null;
-		if (userDetailsServiceImpl.skip2FA(userDetails)) {
-			// Generate JWT token
-			jwtToken = jwtUtils.generateToken(userDetails);
-		}
+        // Check if user can skip 2FA
+        if (userDetailsServiceImpl.skip2FA(userDetails)) {
+            // Generate JWT token for allowed roles
+            String jwtToken = jwtUtils.generateToken(userDetails);
+            
+            // Get user roles
+            List<String> roles = userDetails.getAuthorities().stream()
+                    .map(item -> item.getAuthority())
+                    .collect(Collectors.toList());
 
-		// Get user roles
-		List<String> roles = userDetails.getAuthorities().stream().map(item -> item.getAuthority())
-				.collect(Collectors.toList());
+            // Create Response object with token
+            JwtResponse jwtResponse = new JwtResponse(jwtToken, userDetails.getId(), userDetails.getUsername(),
+                    userDetails.getEmail(), roles);
 
-		// Create Response object
-		JwtResponse jwtResponse = new JwtResponse(jwtToken, userDetails.getId(), userDetails.getUsername(),
-				userDetails.getEmail(), roles);
+            LOG.info("User {} successfully authenticated with direct JWT token", loginRequest.getUsername());
 
-		LOG.info("User {} successfully authenticated", loginRequest.getUsername());
-
-		LOG.info("End Method: authenticateUser");
-
-		// Return ResponseEntity with JWT in header and body
-		return ResponseEntity.ok()
-				 .header("Authorization", "Bearer " + jwtToken)
-				.body(jwtResponse);
+            // Return ResponseEntity with JWT in header and body
+            return ResponseEntity.ok()
+                    .header("Authorization", "Bearer " + jwtToken)
+                    .body(jwtResponse);
+        } else {
+        	
+        	// Get user roles
+    		List<String> roles = userDetails.getAuthorities().stream().map(item -> item.getAuthority())
+    				.collect(Collectors.toList());
+            // User needs to complete 2FA
+        	Map<String, Object> userData = new HashMap<>();
+            userData.put("id", userDetails.getId());
+            userData.put("username", userDetails.getUsername());
+            userData.put("email", userDetails.getEmail());
+            userData.put("roles", roles);
+            
+            CommunicationResponse<Map<String, Object>> response = new CommunicationResponse<>(
+                "2FA_REQUIRED",
+                "Two-factor authentication required",
+                userData
+            );
+            
+            LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
+            return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+        }
 	}
 
 	/**
@@ -279,66 +301,74 @@ public class AuthController {
 	@PostMapping("/admin/signup")
 	@Operation(summary = "Register a new user", description = "Creates a new user account with the provided details.")
 	@ApiResponses(value = {
-			@ApiResponse(responseCode = "200", description = "User registered successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = MessageResponse.class))),
-			@ApiResponse(responseCode = "400", description = "Bad request, invalid input", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
+	        @ApiResponse(responseCode = "200", description = "User registered successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = MessageResponse.class))),
+	        @ApiResponse(responseCode = "400", description = "Bad request, invalid input", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
 	public ResponseEntity<ResponseDto> registerUserAdmin(@Valid @RequestBody SignupRequest signUpRequest) {
-		LOG.info("Start Method: registerUser");
+	    LOG.info("Start Method: registerUser");
 
-		// Check if username is already taken
-		if (userRepository.existsByUsername(signUpRequest.getUsername())) {
-			LOG.info("Method: registerUser - Error: Username is already taken!");
-			return ResponseEntity.badRequest()
-					.body(new MessageResponse("Error: Username is already taken! " + signUpRequest.getUsername()));
-		}
+	    // Check if username is already taken
+	    if (userRepository.existsByUsername(signUpRequest.getUsername())) {
+	        LOG.info("Method: registerUser - Error: Username is already taken!");
+	        return ResponseEntity.badRequest()
+	                .body(new MessageResponse("Error: Username is already taken! " + signUpRequest.getUsername()));
+	    }
 
-		// Check if email is already in use
-		if (userRepository.existsByEmail(signUpRequest.getEmail())) {
-			LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
-			return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
-		}
+	    // Check if email is already in use
+	    if (userRepository.existsByEmail(signUpRequest.getEmail())) {
+	        LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
+	        return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
+	    }
 
-		// Create new user's account
-		User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
-				encoder.encode(signUpRequest.getPassword()));
+	    // Create new user's account
+	    User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
+	            encoder.encode(signUpRequest.getPassword()));
 
-		Set<String> strRoles = signUpRequest.getRoles();
-		Set<Role> roles = new HashSet<>();
+	    Set<String> strRoles = signUpRequest.getRoles();
+	    Set<Role> roles = new HashSet<>();
 
-		Role userAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
-				.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
-		LOG.error("Error: User Role not found.");
-		roles.add(userAdminRole);
-		
-		if (strRoles != null) {
-			strRoles.forEach(role -> {
-				switch (role) {			
-				case "admin":
-					Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
-							.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
-					LOG.error("Error: Admin Role not found.");
-					roles.add(adminRole);
-					break;
-				case "mod":
-					Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
-							.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
-					LOG.error("Error: Moderator Role not found.");
-					roles.add(modRole);
-					break;
-				default:
-					Role userRole = roleRepository.findByName(ERole.ROLE_USER)
-							.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
-					LOG.error("Error: User Role not found.");
-					roles.add(userRole);
-				}
-			});
-		}
+	    if (strRoles != null) {
+	        strRoles.forEach(role -> {
+	            switch (role.toLowerCase()) {  // Convert to lowercase for case-insensitive comparison
+	            case "superadmin":
+	                Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding SUPERADMIN role");
+	                roles.add(superAdminRole);
+	                break;          
+	            case "admin":
+	                Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding ADMIN role");
+	                roles.add(adminRole);
+	                break;
+	            case "mod":
+	                Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding MODERATOR role");
+	                roles.add(modRole);
+	                break;
+	            default:
+	                Role userRole = roleRepository.findByName(ERole.ROLE_USER)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding USER role for unrecognized role: " + role);
+	                roles.add(userRole);
+	            }
+	        });
+	    }
 
-		user.setRoles(roles);
-		userRepository.save(user);
+	    user.setRoles(roles);
+	    userRepository.save(user);
 
-		LOG.info("Method: registerUser - User registered successfully!");
-		return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+	    LOG.info("Method: registerUser - User registered successfully with roles: {}", 
+	             roles.stream().map(r -> r.getName().name()).collect(Collectors.joining(", ")));
+	    return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
 	}
-
 	
+	@GetMapping("/roles")
+	public ResponseEntity<?> checkRoles() {
+	    List<Role> roles = roleRepository.findAll();
+	    return ResponseEntity.ok(roles.stream()
+	        .map(r -> r.getName().name())
+	        .collect(Collectors.toList()));
+	}
 }

@@ -18,7 +18,7 @@ spring:
 identity:
   disable2FA:
     allowed-roles:
-      - SUPERADMIN
+       - ROLE_SUPERADMIN
 
 # Email API configuration
 email:

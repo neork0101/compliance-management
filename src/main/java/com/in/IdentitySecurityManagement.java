@@ -35,32 +35,33 @@ public class IdentitySecurityManagement {
 	
 	@PostConstruct
 	public void seeder() {
+	    List<Role> adminRole = roleRepo.findAll();
 
-		List<Role> adminRole = roleRepo.findAll();
+	    if (!adminRole.isEmpty()) {
+	        LOG.info("Identity Management App started - Roles " + adminRole.size());
+	    } else {
+	        List<Role> roles = new ArrayList<>();
+	        
+	        Role roleSuperAdmin = new Role();
+	        roleSuperAdmin.setName(ERole.ROLE_SUPERADMIN);
+	        roles.add(roleSuperAdmin);
+	        
+	        Role roleAdmin = new Role();
+	        roleAdmin.setName(ERole.ROLE_ADMIN);
+	        roles.add(roleAdmin);
+	        
+	        Role roleMod = new Role();
+	        roleMod.setName(ERole.ROLE_MODERATOR);
+	        roles.add(roleMod);
 
-		if (!adminRole.isEmpty()) {
-			
-			//adminRole.stream().
-			LOG.info("Volunteer Management App started - Roles "+adminRole.size());
-
-		} else {
-			List<Role> roles = new ArrayList<>();
-			
-			Role roleadmin = new Role();
-			roleadmin.setName(ERole.ROLE_ADMIN);
-			roles.add(roleadmin);
-			
-			Role roleMod = new Role();
-			roleMod.setName(ERole.ROLE_MODERATOR);
-			roles.add(roleMod);
-			// roleRepo.save(roleMod);
-
-			Role roleUser = new Role();
-			roleUser.setName(ERole.ROLE_USER);
-			roles.add(roleUser);
-			roleRepo.saveAll(roles);
-		}
-
+	        Role roleUser = new Role();
+	        roleUser.setName(ERole.ROLE_USER);
+	        roles.add(roleUser);
+	        
+	        roleRepo.saveAll(roles);
+	        
+	        LOG.info("Initial roles created successfully");
+	    }
 	}
 
 }
