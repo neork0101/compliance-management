@@ -6,7 +6,7 @@ spring:
   data:
     mongodb:
       uri: mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
-     # uri: mongodb://localhost:27017/compliance_management_db
+      #uri: mongodb://localhost:27017/compliance_management_db
       socketTimeout: 60000
       connectTimeout: 60000
       serverSelectionTimeout: 60000

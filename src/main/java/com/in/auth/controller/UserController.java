@@ -16,8 +16,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.repository.RoleRepository;
 import com.in.auth.repository.UserRepository;
+import com.in.security.models.Role;
 import com.in.security.models.User;
 
 @RestController
@@ -27,6 +28,9 @@ public class UserController {
 	
 	@Autowired(required = true)
 	 private UserRepository userRepository;
+	
+	@Autowired(required = true)
+	private RoleRepository roleRepository;
 	
 	 @GetMapping("/{id}")
 	 // @PreAuthorize("hasRole('MODERATOR')")
@@ -49,6 +53,22 @@ public class UserController {
 	    userRepository.deleteById(id);
 	    log.info("Success deleteUser:");
 	    return "User Deletion Successful";
+	  }
+	 
+	 @GetMapping("/roles")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public List<Role> getAllRole() {
+		 log.info("Start getAllRole: {}");
+	    return roleRepository.findAll();
+	  }
+	 
+	 @DeleteMapping("/role/{id}")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public String deleteRole(@PathVariable String id) {
+		 log.info("Start deleteRole: {}");
+		 roleRepository.deleteById(id);
+	    log.info("Success deleteRole:");
+	    return "Role Deletion Successful";
 	  }
 	 
  	@PutMapping("/{id}")

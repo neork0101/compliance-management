@@ -142,8 +142,11 @@ public class AuthController {
                 userData
             );
             
+            JwtResponse jwtResponse = new JwtResponse(null, userDetails.getId(), userDetails.getUsername(),
+                    userDetails.getEmail(), roles);
+            
             LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
-            return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            return new ResponseEntity<>(jwtResponse, HttpStatus.OK);
         }
 	}
 
@@ -326,15 +329,14 @@ public class AuthController {
 	    Set<String> strRoles = signUpRequest.getRoles();
 	    Set<Role> roles = new HashSet<>();
 
+	    Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
+                .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+        LOG.info("Adding SUPERADMIN role");
+        roles.add(superAdminRole);
+
 	    if (strRoles != null) {
 	        strRoles.forEach(role -> {
-	            switch (role.toLowerCase()) {  // Convert to lowercase for case-insensitive comparison
-	            case "superadmin":
-	                Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
-	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
-	                LOG.info("Adding SUPERADMIN role");
-	                roles.add(superAdminRole);
-	                break;          
+	            switch (role.toLowerCase()) {  //Convert to lowercase for case-insensitive comparison        
 	            case "admin":
 	                Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
 	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
