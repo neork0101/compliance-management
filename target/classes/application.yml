@@ -5,7 +5,7 @@ spring:
     name: identity-security-management
   data:
     mongodb:
-      uri: mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
+      uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?retryWrites=true&w=majority
       #uri: mongodb://localhost:27017/compliance_management_db
       socketTimeout: 60000
       connectTimeout: 60000
