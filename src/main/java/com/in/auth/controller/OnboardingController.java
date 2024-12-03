@@ -1,7 +1,7 @@
 package com.in.auth.controller;
 
 
-import com.in.auth.service.ExcelService;
+import com.in.auth.service.OnboardingService;
 
 import java.util.Map;
 
@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("identitymanagement/api/excel")
 public class OnboardingController {
     @Autowired
-    private ExcelService excelService;
+    private OnboardingService excelService;
 
     @PostMapping("/upload")
     public String uploadExcel(@RequestBody Map<String, String> request) {
