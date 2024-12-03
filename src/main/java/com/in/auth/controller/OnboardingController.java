@@ -9,8 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/excel")
-public class ExcelController {
+@RequestMapping("identitymanagement/api/excel")
+public class OnboardingController {
     @Autowired
     private ExcelService excelService;
 
