@@ -37,6 +37,18 @@ public class User {
 
   @DBRef
   private Set<Role> roles = new HashSet<>();
+  
+  @DBRef
+  private UserProfile userProfile;
+  
+  @DBRef
+  private Organization organization = new Organization();
+  
+  private String status;
+  
+  private String lastLogin;
+  
+  private String failedLoginAtetmpts;
 
   public User() {
   }

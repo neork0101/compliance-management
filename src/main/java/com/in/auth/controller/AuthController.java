@@ -32,7 +32,9 @@ import com.in.auth.payload.request.LoginRequest;
 import com.in.auth.payload.request.SignupRequest;
 import com.in.auth.payload.response.JwtResponse;
 import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.repository.OnboardedUserRepository;
 import com.in.auth.repository.RoleRepository;
+import com.in.auth.repository.UserProfileRepository;
 import com.in.auth.repository.UserRepository;
 import com.in.auth.service.PasswordResetService;
 import com.in.auth.service.UserDetailsImpl;
@@ -41,6 +43,8 @@ import com.in.security.jwt.JwtUtils;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.UserProfile;
 import com.in.security.util.AppConstants;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -64,9 +68,15 @@ public class AuthController {
 
 	@Autowired
 	UserRepository userRepository;
+	
+	@Autowired
+    UserProfileRepository userProfileRepository;
 
 	@Autowired
 	RoleRepository roleRepository;
+	
+	@Autowired
+    OnboardedUserRepository onboardedUserRepository;
 
 	@Autowired
 	PasswordEncoder encoder;
@@ -176,12 +186,22 @@ public class AuthController {
 			LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
 			return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
 		}
+		
+		// check if user email is available in onboarded_users collection
+		OnboardedUser onboardedUser=onboardedUserRepository.findByEmail(signUpRequest.getEmail());
+		if(onboardedUser==null)
+		{
+		    LOG.info("Method: registerUser - Error: Email is not available in onboarded users list:" + signUpRequest.getEmail());
+            return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is not available in onboarded users list!"));
+		}
 
 		// Create new user's account
 		User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
 				encoder.encode(signUpRequest.getPassword()));
 
-		Set<String> strRoles = signUpRequest.getRoles();
+		
+		/*Set<String> strRoles = signUpRequest.getRoles();
+		
 		Set<Role> roles = new HashSet<>();
 
 		if (strRoles == null) {
@@ -211,10 +231,22 @@ public class AuthController {
 					roles.add(userRole);
 				}
 			});
-		}
+		}*/
 
-		user.setRoles(roles);
-		userRepository.save(user);
+		// retrieving roles and organization details from OnboardedUser collection and setting it to the user.
+		user.setRoles(onboardedUser.getRoles());
+		user.setOrganization(onboardedUser.getOrganization());
+		user.setStatus("Active");
+		User savedUser=userRepository.save(user);
+		
+		// Creating a user profile when user is created 
+		UserProfile userProfile=new UserProfile(null,savedUser.getId(),null,null,signUpRequest.getEmail(),null,null,signUpRequest.getUsername(),null,null,null,"Active");
+		//UserProfile userProfile=new UserProfile(signUpRequest.getUsername(),"test","test",signUpRequest.getEmail(),"test","test",signUpRequest.getUsername(),"test","test");
+        userProfileRepository.save(userProfile);
+        
+        // setting status of Onboarded user
+           onboardedUser.setStatus("SignUp_Completed");
+           onboardedUserRepository.save(onboardedUser);
 
 		LOG.info("Method: registerUser - User registered successfully!");
 		return ResponseEntity.ok(new MessageResponse("User registered successfully!"));

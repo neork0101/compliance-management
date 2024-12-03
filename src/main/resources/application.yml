@@ -5,11 +5,13 @@ spring:
     name: identity-security-management
   data:
     mongodb:
-      uri: mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
-      #uri: mongodb://localhost:27017/compliance_management_db
+      #uri: mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
+      uri: mongodb://localhost:27017/identityManagement
       socketTimeout: 60000
       connectTimeout: 60000
       serverSelectionTimeout: 60000
+      auto-index-creation: true
+      auto-create-collections: true   
     redis:
       host: 139.59.67.255
       port: 6379
@@ -40,8 +42,8 @@ eureka:
       key-store-password: passw0rd
       key-store-type: PKCS12
     serviceUrl:
-      defaultZone: https://139.59.67.255:8761/eureka/
-      #defaultZone: https://localhost:8761/eureka/
+      #defaultZone: https://139.59.67.255:8761/eureka/
+      defaultZone: https://localhost:8761/eureka/
 
 security:
   app:
