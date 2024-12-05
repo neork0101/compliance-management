@@ -5,7 +5,7 @@ spring:
     name: identity-security-management
   data:
     mongodb:
-      uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
+      uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin
       #uri: mongodb://localhost:27017/identityManagement
       socketTimeout: 60000
       connectTimeout: 60000
@@ -42,8 +42,8 @@ eureka:
       key-store-password: passw0rd
       key-store-type: PKCS12
     serviceUrl:
-      #defaultZone: https://139.59.67.255:8761/eureka/
-      defaultZone: https://localhost:8761/eureka/
+      defaultZone: https://139.59.40.176:8761/eureka/
+      #defaultZone: https://localhost:8761/eureka/
 
 security:
   app:

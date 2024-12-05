@@ -15,6 +15,7 @@ import com.in.security.models.UserProfile;
 @Repository
 public interface UserProfileRepository extends MongoRepository<UserProfile, String> {
     
-
+	//custom method for onboarding layer signin
+	UserProfile findByUserId(String userId);
 }
 

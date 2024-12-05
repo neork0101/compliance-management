@@ -5,6 +5,7 @@ META-INF\spring-configuration-metadata.json
 com\in\auth\controller\UserController.class
 com\in\auth\dto\CommunicationResponse.class
 com\in\security\config\WebClientConfig.class
+com\in\security\exception\FileNotFoundException.class
 com\in\auth\repository\RoleRepository.class
 com\in\auth\repository\UserRepository.class
 com\in\security\util\AppConstants.class
@@ -42,10 +43,13 @@ com\in\auth\payload\response\MessageResponse.class
 com\in\auth\service\CustomAuthenticationEntryPoint.class
 com\in\IdentitySecurityManagement.class
 com\in\security\config\SwaggerConfig.class
+com\in\security\exception\InvalidFileFormatException.class
 com\in\auth\dto\OtpResponse.class
 com\in\security\jwt\AuthEntryPointJwt.class
 com\in\security\models\Organization.class
 com\in\auth\dto\ErrorDetails.class
+com\in\auth\dto\ProcessingResult.class
+com\in\security\exception\ExcelProcessingException.class
 com\in\auth\controller\UserProfileController.class
 com\in\security\exception\NotFoundExceptions.class
 com\in\auth\repository\UserProfileRepository.class

@@ -44,6 +44,7 @@ import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
 import com.in.security.models.OnboardedUser;
+import com.in.security.models.Organization;
 import com.in.security.models.UserProfile;
 import com.in.security.util.AppConstants;
 
@@ -113,6 +114,22 @@ public class AuthController {
 
         // Get user details
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        
+     // Retrieve User from the repository
+        User user = userRepository.findById(userDetails.getId()).orElse(null);
+        
+        // Retrieve UserProfile
+        UserProfile userProfile = userProfileRepository.findByUserId(userDetails.getId());
+
+        if (userProfile == null) {
+            LOG.warn("UserProfile not found for user ID: {}", userDetails.getId());
+        }
+
+     // Retrieve Organization 
+        Organization organization = (user != null) ? user.getOrganization() : null;
+        if (organization == null) {
+            LOG.warn("Organization not found for user ID: {}", userDetails.getId());
+        }
 
         // Check if user can skip 2FA
         if (userDetailsServiceImpl.skip2FA(userDetails)) {
@@ -126,7 +143,8 @@ public class AuthController {
 
             // Create Response object with token
             JwtResponse jwtResponse = new JwtResponse(jwtToken, userDetails.getId(), userDetails.getUsername(),
-                    userDetails.getEmail(), roles);
+                    userDetails.getEmail(), roles, userProfile,
+                    organization);
 
             LOG.info("User {} successfully authenticated with direct JWT token", loginRequest.getUsername());
 
@@ -153,7 +171,8 @@ public class AuthController {
             );
             
             JwtResponse jwtResponse = new JwtResponse(null, userDetails.getId(), userDetails.getUsername(),
-                    userDetails.getEmail(), roles);
+                    userDetails.getEmail(), roles,userProfile,
+                    organization);
             
             LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
             return new ResponseEntity<>(jwtResponse, HttpStatus.OK);

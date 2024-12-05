@@ -44,7 +44,9 @@ import com.in.auth.payload.request.LoginRequest;
 import com.in.auth.payload.request.SignupRequest;
 import com.in.auth.payload.response.JwtResponse;
 import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.repository.OnboardedUserRepository;
 import com.in.auth.repository.RoleRepository;
+import com.in.auth.repository.UserProfileRepository;
 import com.in.auth.repository.UserRepository;
 import com.in.auth.service.PasswordResetService;
 import com.in.auth.service.UserDetailsImpl;
@@ -53,6 +55,8 @@ import com.in.security.jwt.JwtUtils;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.UserProfile;
 import com.in.security.util.AppConstants;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -76,9 +80,15 @@ public class AuthController {
 
 	@Autowired
 	UserRepository userRepository;
+	
+	@Autowired
+    UserProfileRepository userProfileRepository;
 
 	@Autowired
 	RoleRepository roleRepository;
+	
+	@Autowired
+    OnboardedUserRepository onboardedUserRepository;
 
 	@Autowired
 	PasswordEncoder encoder;
@@ -154,8 +164,11 @@ public class AuthController {
                 userData
             );
             
+            JwtResponse jwtResponse = new JwtResponse(null, userDetails.getId(), userDetails.getUsername(),
+                    userDetails.getEmail(), roles);
+            
             LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
-            return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+            return new ResponseEntity<>(jwtResponse, HttpStatus.OK);
         }
 	}
 
@@ -185,12 +198,22 @@ public class AuthController {
 			LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
 			return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
 		}
+		
+		// check if user email is available in onboarded_users collection
+		OnboardedUser onboardedUser=onboardedUserRepository.findByEmail(signUpRequest.getEmail());
+		if(onboardedUser==null)
+		{
+		    LOG.info("Method: registerUser - Error: Email is not available in onboarded users list:" + signUpRequest.getEmail());
+            return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is not available in onboarded users list!"));
+		}
 
 		// Create new user's account
 		User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
 				encoder.encode(signUpRequest.getPassword()));
 
-		Set<String> strRoles = signUpRequest.getRoles();
+		
+		/*Set<String> strRoles = signUpRequest.getRoles();
+		
 		Set<Role> roles = new HashSet<>();
 
 		if (strRoles == null) {
@@ -220,10 +243,22 @@ public class AuthController {
 					roles.add(userRole);
 				}
 			});
-		}
+		}*/
 
-		user.setRoles(roles);
-		userRepository.save(user);
+		// retrieving roles and organization details from OnboardedUser collection and setting it to the user.
+		user.setRoles(onboardedUser.getRoles());
+		user.setOrganization(onboardedUser.getOrganization());
+		user.setStatus("Active");
+		User savedUser=userRepository.save(user);
+		
+		// Creating a user profile when user is created 
+		UserProfile userProfile=new UserProfile(null,savedUser.getId(),null,null,signUpRequest.getEmail(),null,null,signUpRequest.getUsername(),null,null,null,"Active");
+		//UserProfile userProfile=new UserProfile(signUpRequest.getUsername(),"test","test",signUpRequest.getEmail(),"test","test",signUpRequest.getUsername(),"test","test");
+        userProfileRepository.save(userProfile);
+        
+        // setting status of Onboarded user
+           onboardedUser.setStatus("SignUp_Completed");
+           onboardedUserRepository.save(onboardedUser);
 
 		LOG.info("Method: registerUser - User registered successfully!");
 		return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
@@ -338,15 +373,14 @@ public class AuthController {
 	    Set<String> strRoles = signUpRequest.getRoles();
 	    Set<Role> roles = new HashSet<>();
 
+	    Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
+                .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+        LOG.info("Adding SUPERADMIN role");
+        roles.add(superAdminRole);
+
 	    if (strRoles != null) {
 	        strRoles.forEach(role -> {
-	            switch (role.toLowerCase()) {  // Convert to lowercase for case-insensitive comparison
-	            case "superadmin":
-	                Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
-	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
-	                LOG.info("Adding SUPERADMIN role");
-	                roles.add(superAdminRole);
-	                break;          
+	            switch (role.toLowerCase()) {  //Convert to lowercase for case-insensitive comparison        
 	            case "admin":
 	                Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
 	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
@@ -383,6 +417,59 @@ public class AuthController {
 	        .map(r -> r.getName().name())
 	        .collect(Collectors.toList()));
 	}
+}
+// File: src/main/java/com/in/auth/controller/OnboardingController.java
+
+package com.in.auth.controller;
+
+import com.in.auth.dto.CommunicationResponse;
+import com.in.auth.dto.ProcessingResult;  
+import com.in.auth.dto.ResponseDto;
+import com.in.auth.service.OnboardingService;
+import com.in.security.exception.InvalidFileFormatException;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+@RestController
+@RequestMapping("identitymanagement/api/excel")
+@Tag(name = "Onboarding Controller", description = "Excel file processing endpoints for user onboarding")
+@Slf4j
+public class OnboardingController {
+    
+    @Autowired
+    private OnboardingService onboardingService;
+
+    @PostMapping("/upload")
+    @Operation(summary = "Upload and process Excel file", 
+              description = "Process an Excel file containing organization and user details")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "File processed successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid request or file format"),
+        @ApiResponse(responseCode = "404", description = "File not found"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<ResponseDto> uploadExcel(@RequestBody Map<String, String> request) {
+        log.info("Processing excel file upload request");
+        String filePath = request.get("filePath");
+        
+        if (filePath == null || filePath.isEmpty()) {
+            throw new InvalidFileFormatException("File path is required");
+        }
+
+        ProcessingResult result = onboardingService.processExcelFile(filePath);
+        return ResponseEntity.ok(new CommunicationResponse<>("SUCCESS", 
+            "Excel file processed successfully", result));
+    }
 }
 // File: src/main/java/com/in/auth/controller/OtpController.java
 
@@ -552,8 +639,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.repository.RoleRepository;
 import com.in.auth.repository.UserRepository;
+import com.in.security.models.Role;
 import com.in.security.models.User;
 
 @RestController
@@ -563,6 +651,9 @@ public class UserController {
 	
 	@Autowired(required = true)
 	 private UserRepository userRepository;
+	
+	@Autowired(required = true)
+	private RoleRepository roleRepository;
 	
 	 @GetMapping("/{id}")
 	 // @PreAuthorize("hasRole('MODERATOR')")
@@ -585,6 +676,22 @@ public class UserController {
 	    userRepository.deleteById(id);
 	    log.info("Success deleteUser:");
 	    return "User Deletion Successful";
+	  }
+	 
+	 @GetMapping("/roles")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public List<Role> getAllRole() {
+		 log.info("Start getAllRole: {}");
+	    return roleRepository.findAll();
+	  }
+	 
+	 @DeleteMapping("/role/{id}")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public String deleteRole(@PathVariable String id) {
+		 log.info("Start deleteRole: {}");
+		 roleRepository.deleteById(id);
+	    log.info("Success deleteRole:");
+	    return "Role Deletion Successful";
 	  }
 	 
  	@PutMapping("/{id}")
@@ -610,6 +717,107 @@ public class UserController {
 
 }
 
+// File: src/main/java/com/in/auth/controller/UserProfileController.java
+
+package com.in.auth.controller;
+
+
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.in.auth.dto.ErrorDetails;
+import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.service.UserProfileService;
+import com.in.security.models.UserProfile;
+
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+/**
+ * REST Controller for User Profile Management.
+ * Handles HTTP requests related to User Profiles.
+ */
+@RestController
+@RequestMapping("identitymanagement/api/user-profile")
+
+public class UserProfileController {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserProfileController.class);
+    private final UserProfileService userProfileService;
+
+    /**
+     * Constructor-based dependency injection for UserProfileService.
+     * @param userProfileService the service handling user profile operations
+     */
+    public UserProfileController(UserProfileService userProfileService) {
+        this.userProfileService = userProfileService;
+    }
+
+    /**
+     * Creates a new User Profile.
+     * @param userProfile the user profile data
+     * @return the created user profile
+     */
+    @PostMapping
+    public ResponseEntity<UserProfile> createUserProfile(@RequestBody UserProfile userProfile) {
+        return ResponseEntity.ok(userProfileService.createUserProfile(userProfile));
+    }
+
+    /**
+     * Retrieves a list of all User Profiles.
+     * @return list of user profiles
+     */
+    @GetMapping
+    public ResponseEntity<List<UserProfile>> getAllUserProfiles() {
+        return ResponseEntity.ok(userProfileService.getAllUserProfiles());
+    }
+
+    /**
+     * Retrieves a User Profile by its ID.
+     * @param id the ID of the user profile
+     * @return the user profile with the specified ID
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<UserProfile> getUserProfileById(@PathVariable String id) {
+        return ResponseEntity.ok(userProfileService.getUserProfileById(id));
+    }
+
+    /**
+     * Updates an existing User Profile by ID.
+     * @param id the ID of the user profile to update
+     * @param userProfile the updated user profile data
+     * @return the updated user profile
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<UserProfile> updateUserProfile(@PathVariable String id, @RequestBody UserProfile userProfile) {
+        logger.info("User Profile update", id);
+        return ResponseEntity.ok(userProfileService.updateUserProfile(id,userProfile));
+    }
+
+    /**
+     * Deletes a User Profile by ID.
+     * @param id the ID of the user profile to delete
+     * @return response entity indicating the status of the operation
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUserProfile(@PathVariable String id) {
+        userProfileService.deleteUserProfile(id);
+        return ResponseEntity.noContent().build();
+    }
+}
 // File: src/main/java/com/in/auth/dto/CommunicationResponse.java
 
 package com.in.auth.dto;
@@ -717,6 +925,21 @@ public class PasswordResetResponse {
     }
 }
 
+// File: src/main/java/com/in/auth/dto/ProcessingResult.java
+
+package com.in.auth.dto;
+
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProcessingResult implements ResponseDto {
+    private int organizationsProcessed;
+    private int usersProcessed;
+}
 // File: src/main/java/com/in/auth/dto/ResponseDto.java
 
 package com.in.auth.dto;
@@ -1019,6 +1242,31 @@ public class UserInfoResponse implements ResponseDto{
   }
 }
 
+// File: src/main/java/com/in/auth/repository/OnboardedUserRepository.java
+
+package com.in.auth.repository;
+
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.User;
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+public interface OnboardedUserRepository extends MongoRepository<OnboardedUser, String> {
+    // Find a user by email
+    OnboardedUser findByEmail(String email);
+    
+    
+}
+// File: src/main/java/com/in/auth/repository/OrganizationRepository.java
+
+package com.in.auth.repository;
+
+
+import com.in.security.models.Organization;
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+public interface OrganizationRepository extends MongoRepository<Organization, String> {
+}
 // File: src/main/java/com/in/auth/repository/RoleRepository.java
 
 package com.in.auth.repository;
@@ -1035,6 +1283,29 @@ import com.in.security.models.Role;
 public interface RoleRepository extends MongoRepository<Role, String> {
   Optional<Role> findByName(ERole name);
 }
+
+// File: src/main/java/com/in/auth/repository/UserProfileRepository.java
+
+package com.in.auth.repository;
+
+
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.stereotype.Repository;
+
+import com.in.security.models.User;
+import com.in.security.models.UserProfile;
+
+/**
+ * Repository interface for User Profile operations.
+ * Extends MongoRepository to provide CRUD operations.
+ */
+@Repository
+public interface UserProfileRepository extends MongoRepository<UserProfile, String> {
+    
+
+}
+
 
 // File: src/main/java/com/in/auth/repository/UserRepository.java
 
@@ -1096,6 +1367,310 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
         ObjectMapper mapper = new ObjectMapper();
         mapper.writeValue(responseStream, re);
         responseStream.flush();
+    }
+}
+// File: src/main/java/com/in/auth/service/OnboardingService.java
+
+package com.in.auth.service;
+
+import com.in.auth.repository.OnboardedUserRepository;
+import com.in.auth.repository.OrganizationRepository;
+import com.in.auth.repository.RoleRepository;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoClient;
+import com.in.security.exception.ExcelProcessingException;
+import com.in.security.exception.FileNotFoundException;
+import com.in.security.exception.InvalidFileFormatException;
+import com.in.security.models.ERole;
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.Organization;
+import com.in.security.models.Role;
+import com.in.auth.dto.ProcessingResult;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.stereotype.Service;
+
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@Slf4j
+public class OnboardingService {
+    
+    private static final Logger log = LoggerFactory.getLogger(OnboardingService.class);
+    
+    @Autowired
+    private OrganizationRepository organizationRepository;
+    
+    @Autowired
+    private OnboardedUserRepository onboardedUserRepository;
+    
+    @Autowired
+    private RoleRepository roleRepository;
+    
+    @Autowired
+    private MongoClient mongoClient;
+    
+    @Autowired
+    private MongoTemplate mongoTemplate;
+
+    @Value("${identity.excel.allowed-extensions:xlsx}")
+    private List<String> allowedExtensions;
+
+    /**
+     * Process the Excel file and save organizations and users to the database.
+     * Uses MongoDB transactions to ensure atomicity.
+     */
+    public ProcessingResult processExcelFile(String filePath) {
+        log.info("Starting to process excel file: {}", filePath);
+        validateFile(filePath);
+        
+        try (FileInputStream fis = new FileInputStream(new File(filePath));
+             Workbook workbook = new XSSFWorkbook(fis)) {
+            
+            // Process all data first before any database operations
+            log.info("Processing organization sheet...");
+            List<Organization> organizations = processOrganizationSheet(workbook);
+            
+            log.info("Processing user sheet...");
+            List<OnboardedUser> users = processUserSheet(workbook, organizations);
+            
+            // Handle database operations in a transaction
+            return executeInTransaction(organizations, users);
+        } catch (IOException e) {
+            log.error("IO error while processing excel file", e);
+            throw new ExcelProcessingException("Failed to read excel file", e);
+        } catch (Exception e) {
+            log.error("Error processing excel file", e);
+            throw new ExcelProcessingException("Failed to process excel file: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Execute database operations within a MongoDB transaction
+     */
+    private ProcessingResult executeInTransaction(List<Organization> organizations, List<OnboardedUser> users) {
+        try (ClientSession session = mongoClient.startSession()) {
+            try {
+                // Start transaction
+                session.startTransaction();
+                
+                // Save organizations
+                List<Organization> savedOrgs = saveOrganizations(session, organizations);
+                log.info("Saved {} organizations", savedOrgs.size());
+                
+                // Update and save users
+                List<OnboardedUser> savedUsers = saveUsers(session, users, savedOrgs.get(0));
+                log.info("Saved {} users", savedUsers.size());
+                
+                // Commit transaction
+                session.commitTransaction();
+                
+                return new ProcessingResult(savedOrgs.size(), savedUsers.size());
+                
+            } catch (Exception e) {
+                log.error("Error during transaction, performing rollback", e);
+                session.abortTransaction();
+                throw new ExcelProcessingException("Failed to save data: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Save organizations within the transaction context
+     */
+    private List<Organization> saveOrganizations(ClientSession session, List<Organization> organizations) {
+        List<Organization> savedOrgs = new ArrayList<>();
+        for (Organization org : organizations) {
+            // Need to bind the save operation to the session
+            Organization savedOrg = mongoTemplate.withSession(session)
+                .execute(action -> organizationRepository.save(org));
+            savedOrgs.add(savedOrg);
+        }
+        return savedOrgs;
+    }
+
+    /**
+     * Save users within the transaction context
+     */
+    private List<OnboardedUser> saveUsers(ClientSession session, List<OnboardedUser> users, Organization organization) {
+        List<OnboardedUser> savedUsers = new ArrayList<>();
+        for (OnboardedUser user : users) {
+            user.setOrganization(organization);
+            // Need to bind the save operation to the session
+            OnboardedUser savedUser = mongoTemplate.withSession(session)
+                .execute(action -> onboardedUserRepository.save(user));
+            savedUsers.add(savedUser);
+        }
+        return savedUsers;
+    }
+
+    private void validateFile(String filePath) {
+        File file = new File(filePath);
+        
+        if (!file.exists()) {
+            throw new FileNotFoundException("File not found: " + filePath);
+        }
+        
+        if (!file.isFile()) {
+            throw new InvalidFileFormatException("Path is not a file: " + filePath);
+        }
+        
+        String extension = FilenameUtils.getExtension(filePath).toLowerCase();
+        if (!allowedExtensions.contains(extension)) {
+            throw new InvalidFileFormatException("Invalid file format. Allowed formats: " + 
+                String.join(", ", allowedExtensions));
+        }
+    }
+
+    /**
+     * Process the organization sheet from the workbook.
+     */
+    private List<Organization> processOrganizationSheet(Workbook workbook) {
+        Sheet sheet = workbook.getSheet("Organization_Details");
+        if (sheet == null) {
+            throw new ExcelProcessingException("Organization_Details sheet not found");
+        }
+
+        List<Organization> organizations = new ArrayList<>();
+        DataFormatter formatter = new DataFormatter();
+
+        for (Row row : sheet) {
+            if (row.getRowNum() == 0) continue; // Skip header
+
+            try {
+                Organization org = extractOrganization(row, formatter);
+                if (org != null) {
+                    organizations.add(org);
+                }
+            } catch (Exception e) {
+                log.error("Error processing organization row {}", row.getRowNum(), e);
+                throw new ExcelProcessingException("Error processing organization at row " + 
+                    (row.getRowNum() + 1), e);
+            }
+        }
+
+        if (organizations.isEmpty()) {
+            throw new ExcelProcessingException("No valid organizations found in the Excel file");
+        }
+
+        return organizations;
+    }
+
+    private Organization extractOrganization(Row row, DataFormatter formatter) {
+        String name = formatter.formatCellValue(row.getCell(0));
+        if (StringUtils.isBlank(name)) {
+            return null;
+        }
+
+        Organization org = new Organization();
+        org.setName(name);
+        org.setLocation(formatter.formatCellValue(row.getCell(1)));
+        
+        // Handle numeric cell value safely
+        Cell subscriptionCell = row.getCell(2);
+        if (subscriptionCell != null) {
+            if (subscriptionCell.getCellType() == CellType.NUMERIC) {
+                org.setSubscriptionsCount((int) subscriptionCell.getNumericCellValue());
+            } else {
+                org.setSubscriptionsCount(Integer.parseInt(formatter.formatCellValue(subscriptionCell)));
+            }
+        }
+
+        String modulesStr = formatter.formatCellValue(row.getCell(3));
+        if (StringUtils.isNotBlank(modulesStr)) {
+            org.setModules(Arrays.stream(modulesStr.split(","))
+                .map(String::trim)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toList()));
+        }
+        
+        return org;
+    }
+
+    /**
+     * Process the user sheet from the workbook.
+     */
+    private List<OnboardedUser> processUserSheet(Workbook workbook, List<Organization> organizations) {
+        Sheet sheet = workbook.getSheet("User_Details");
+        if (sheet == null) {
+            throw new ExcelProcessingException("User_Details sheet not found");
+        }
+
+        List<OnboardedUser> users = new ArrayList<>();
+        DataFormatter formatter = new DataFormatter();
+
+        for (Row row : sheet) {
+            if (row.getRowNum() == 0) continue; // Skip header
+
+            try {
+                OnboardedUser user = extractUser(row, formatter, organizations);
+                if (user != null) {
+                    users.add(user);
+                }
+            } catch (Exception e) {
+                log.error("Error processing user row {}", row.getRowNum(), e);
+                throw new ExcelProcessingException("Error processing user at row " + 
+                    (row.getRowNum() + 1), e);
+            }
+        }
+
+        if (users.isEmpty()) {
+            throw new ExcelProcessingException("No valid users found in the Excel file");
+        }
+
+        return users;
+    }
+
+    private OnboardedUser extractUser(Row row, DataFormatter formatter, List<Organization> organizations) {
+        String email = formatter.formatCellValue(row.getCell(0));
+        if (StringUtils.isBlank(email)) {
+            return null;
+        }
+
+        OnboardedUser user = new OnboardedUser();
+        user.setEmail(email.trim());
+
+        // Process roles
+        String rolesStr = formatter.formatCellValue(row.getCell(1));
+        if (StringUtils.isBlank(rolesStr)) {
+            throw new ExcelProcessingException("Roles cannot be empty for user: " + email);
+        }
+
+        Set<Role> roles = Arrays.stream(rolesStr.split(","))
+            .map(String::trim)
+            .filter(StringUtils::isNotBlank)
+            .map(roleName -> {
+                try {
+                    return roleRepository.findByName(ERole.valueOf(roleName.toUpperCase()))
+                        .orElseThrow(() -> new ExcelProcessingException("Role not found: " + roleName));
+                } catch (IllegalArgumentException e) {
+                    throw new ExcelProcessingException("Invalid role name: " + roleName);
+                }
+            })
+            .collect(Collectors.toSet());
+
+        if (roles.isEmpty()) {
+            throw new ExcelProcessingException("No valid roles found for user: " + email);
+        }
+
+        user.setRoles(roles);
+        user.setStatus("Signup_Pending");
+
+        return user;
     }
 }
 // File: src/main/java/com/in/auth/service/OtpService.java
@@ -1221,7 +1796,7 @@ public class PasswordResetService {
     private String emailApiBaseUrl;
     
     @Value("${email.api.password-reset-url}")
-    private String passwordResetUrl="http://146.190.11.82:5173/signin/reset-password";
+    private String passwordResetUrl="http://139.59.40.176:8091/signin/reset-password";
 
     @Autowired
     private WebClient.Builder webClientBuilder;
@@ -1494,6 +2069,120 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 	}
 
 }
+
+// File: src/main/java/com/in/auth/service/UserProfileService.java
+
+package com.in.auth.service;
+
+
+
+import java.util.List;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import com.in.auth.controller.AuthController;
+import com.in.auth.repository.UserProfileRepository;
+import com.in.security.models.UserProfile;
+
+/**
+ * Service class for User Profile Management.
+ * Contains business logic for handling user profiles.
+ */
+@Service
+public class UserProfileService {
+	
+	private static final Logger logger = LoggerFactory.getLogger(UserProfileService.class);
+
+    private final UserProfileRepository userProfileRepository;
+
+    /**
+     * Constructor-based dependency injection for UserProfileRepository.
+     * @param userProfileRepository the repository handling database operations
+     */
+    public UserProfileService(UserProfileRepository userProfileRepository) {
+        this.userProfileRepository = userProfileRepository;
+    }
+
+    /**
+     * Creates a new User Profile.
+     * @param userProfile the user profile data
+     * @return the created user profile
+     */
+    public UserProfile createUserProfile(UserProfile userProfile) {
+        return userProfileRepository.save(userProfile);
+    }
+
+    /**
+     * Retrieves all User Profiles from the database.
+     * @return list of user profiles
+     */
+    public List<UserProfile> getAllUserProfiles() {
+        return userProfileRepository.findAll();
+    }
+
+    /**
+     * Retrieves a User Profile by its ID.
+     * @param id the ID of the user profile
+     * @return the user profile with the specified ID, or null if not found
+     */
+    public UserProfile getUserProfileById(String id) {
+        Optional<UserProfile> userProfile = userProfileRepository.findById(id);
+        return userProfile.orElse(null);
+    }
+
+    /**
+     * Updates an existing User Profile.
+     * @param id the ID of the user profile to update
+     * @param updatedUserProfile the updated user profile data
+     * @return the updated user profile, or null if not found
+     */
+    public UserProfile updateUserProfile(String id, UserProfile updatedUserProfile) {
+        // Check if the user profile with the given ID exists
+        if (userProfileRepository.existsById(id)) {
+            logger.info("ID EXISTS!!!!!!!!!!!Updating user profile with ID: {}", id);
+            // Retrieve the existing user profile from the database
+            UserProfile existingUserProfile = userProfileRepository.findById(id).get();
+           // Update the fields of the existing user profile only if the new values are not null
+            if (updatedUserProfile.getFirstName() != null) {
+                existingUserProfile.setFirstName(updatedUserProfile.getFirstName());
+            }
+            if (updatedUserProfile.getLastName() != null) {
+                existingUserProfile.setLastName(updatedUserProfile.getLastName());
+            }
+            /*if (updatedUserProfile.getEmail() != null) {
+                existingUserProfile.setEmail(updatedUserProfile.getEmail());
+            }*/
+            if (updatedUserProfile.getPhoneNumber() != null) {
+                existingUserProfile.setPhoneNumber(updatedUserProfile.getPhoneNumber());
+            }
+            if (updatedUserProfile.getAddress() != null) {
+                existingUserProfile.setAddress(updatedUserProfile.getAddress());
+            }
+            if (updatedUserProfile.getInterests() != null) {
+                existingUserProfile.setInterests(updatedUserProfile.getInterests());
+            }
+            if (updatedUserProfile.getProfilePicture() != null) {
+                existingUserProfile.setProfilePicture(updatedUserProfile.getProfilePicture());
+            }    
+            // Save the updated user profile
+            return userProfileRepository.save(existingUserProfile);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Deletes a User Profile by its ID.
+     * @param id the ID of the user profile to delete
+     */
+    public void deleteUserProfile(String id) {
+        userProfileRepository.deleteById(id);
+    }
+}
+
 
 // File: src/main/java/com/in/IdentitySecurityManagement.java
 
@@ -1775,6 +2464,33 @@ public class WebSecurityConfig {
         return http.build();
     }
 }
+// File: src/main/java/com/in/security/exception/ExcelProcessingException.java
+
+package com.in.security.exception;
+
+public class ExcelProcessingException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public ExcelProcessingException(String message) {
+        super(message);
+    }
+
+    public ExcelProcessingException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+// File: src/main/java/com/in/security/exception/FileNotFoundException.java
+
+package com.in.security.exception;
+
+public class FileNotFoundException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public FileNotFoundException(String message) {
+        super(message);
+    }
+}
+
 // File: src/main/java/com/in/security/exception/GlobalExceptionHandler.java
 
 package com.in.security.exception;
@@ -1788,7 +2504,10 @@ import org.springframework.web.context.request.WebRequest;
 
 import com.in.auth.dto.ErrorDetails;
 
+import lombok.extern.slf4j.Slf4j;
+
 @ControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(JwtTokenException.class)
@@ -1815,6 +2534,50 @@ public class GlobalExceptionHandler {
             request.getDescription(false)
         );
         return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+    
+    @ExceptionHandler(ExcelProcessingException.class)
+    public ResponseEntity<ErrorDetails> handleExcelProcessingException(ExcelProcessingException ex, WebRequest request) {
+        log.error("Excel processing error", ex);
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+            "Failed to process Excel file",
+            ex.getMessage()
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(FileNotFoundException.class)
+    public ResponseEntity<ErrorDetails> handleFileNotFoundException(FileNotFoundException ex, WebRequest request) {
+        log.error("File not found", ex);
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.NOT_FOUND.value(),
+            "File not found",
+            ex.getMessage()
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(InvalidFileFormatException.class)
+    public ResponseEntity<ErrorDetails> handleInvalidFileFormatException(InvalidFileFormatException ex, WebRequest request) {
+        log.error("Invalid file format", ex);
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.BAD_REQUEST.value(),
+            "Invalid file format",
+            ex.getMessage()
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+    }
+}
+// File: src/main/java/com/in/security/exception/InvalidFileFormatException.java
+
+package com.in.security.exception;
+
+public class InvalidFileFormatException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public InvalidFileFormatException(String message) {
+        super(message);
     }
 }
 // File: src/main/java/com/in/security/exception/InvalidUidException.java
@@ -2112,7 +2875,98 @@ public enum ERole {
   ROLE_USER,
   ROLE_MODERATOR,
   ROLE_ADMIN,
-  ROLE_SUPERADMIN
+  ROLE_SUPERADMIN,
+  ROLE_APPROVER 
+}
+
+// File: src/main/java/com/in/security/models/OnboardedUser.java
+
+package com.in.security.models;
+
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.DBRef;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+@Document(collection = "onboarded_users")
+public class OnboardedUser {
+    @Id
+    private String id;
+    
+    @NotBlank
+    @Size(max = 50)
+    @Email
+    private String email;
+    
+    @DBRef
+    private Set<Role> roles = new HashSet<>();
+    
+    @DBRef
+    private Organization organization = new Organization();
+    
+    @NotBlank
+    private String status;
+
+    
+    public String getStatus() {
+        return status;
+    }
+    public void setStatus(String status) {
+        this.status = status;
+    }
+    // Getters and Setters
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+
+    public Set<Role> getRoles() {
+        return roles;
+      }
+
+      public void setRoles(Set<Role> roles) {
+        this.roles = roles;
+      }
+      public Organization getOrganization() {
+          return organization;
+      }
+      public void setOrganization(Organization organization) {
+          this.organization = organization;
+      }
+}
+
+// File: src/main/java/com/in/security/models/Organization.java
+
+package com.in.security.models;
+
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import lombok.Data;
+
+import java.util.List;
+
+@Document(collection = "Organization")
+@Data
+public class Organization {
+    @Id
+    private String id;
+    private String name;
+    private String location;
+    private int subscriptionsCount;
+    private List<String> modules;
+
+  
 }
 
 // File: src/main/java/com/in/security/models/Role.java
@@ -2195,6 +3049,18 @@ public class User {
 
   @DBRef
   private Set<Role> roles = new HashSet<>();
+  
+  @DBRef
+  private UserProfile userProfile;
+  
+  @DBRef
+  private Organization organization = new Organization();
+  
+  private String status;
+  
+  private String lastLogin;
+  
+  private String failedLoginAtetmpts;
 
   public User() {
   }
@@ -2245,6 +3111,53 @@ public class User {
   public void setRoles(Set<Role> roles) {
     this.roles = roles;
   }
+}
+
+// File: src/main/java/com/in/security/models/UserProfile.java
+
+package com.in.security.models;
+
+
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "user_profiles")
+public class UserProfile {
+    
+	@Id
+    private String id;
+	@Field(name = "userId")
+    private String userId;
+    @Field(name = "first_name")
+    private String firstName;
+    @Field(name = "last_name")
+    private String lastName;
+    @Field(name = "email")
+    private String email;
+    @Field(name = "phone_number")
+    private String phoneNumber;
+    @Field(name = "address")
+    private String address;
+    @Field(name = "user_name")
+    private String userName;
+    @Field(name = "interests")
+    private String interests;
+    @Field(name = "profile_picture")
+    private String profilePicture;
+    @Field(name = "city")
+    private String city;
+    @Field(name = "status")
+    private String status;
+  
 }
 
 // File: src/main/java/com/in/security/util/AppConstants.java
@@ -3154,11 +4067,13 @@ spring:
     name: identity-security-management
   data:
     mongodb:
-      uri: mongodb+srv://moderator:1s89026mS4Hp7eNZ@db-mongodb-blr1-vms-59c60299.mongo.ondigitalocean.com/identityManagement?tls=true&authSource=admin&replicaSet=db-mongodb-blr1-vms
-     # uri: mongodb://localhost:27017/compliance_management_db
+      uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin
+      #uri: mongodb://localhost:27017/identityManagement
       socketTimeout: 60000
       connectTimeout: 60000
       serverSelectionTimeout: 60000
+      auto-index-creation: true
+      auto-create-collections: true   
     redis:
       host: 139.59.67.255
       port: 6379
@@ -3256,6 +4171,11 @@ POM File (pom.xml):
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
+		<dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <optional>true</optional>
+        </dependency>
 			<dependency>
 			<groupId>org.mongodb</groupId>
 			<artifactId>mongodb-driver-sync</artifactId>
@@ -3374,6 +4294,11 @@ POM File (pom.xml):
 			<artifactId>spring-boot-configuration-processor</artifactId>
 			<optional>true</optional>
 		</dependency>
+		<dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi-ooxml</artifactId>
+        <version>5.2.3</version>
+        </dependency>
 	</dependencies>
 
 	<build>

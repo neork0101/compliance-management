@@ -2,9 +2,12 @@ package com.in.auth.payload.response;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.in.auth.dto.ResponseDto;
-
+import com.in.security.models.UserProfile;
+import com.in.security.models.Organization;
 import io.swagger.v3.oas.annotations.media.Schema;
+
 
 public class JwtResponse implements ResponseDto {
     @Schema(description = "JWT token", example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
@@ -22,23 +25,24 @@ public class JwtResponse implements ResponseDto {
     @Schema(description = "List of roles assigned to the user", example = "[\"ROLE_USER\", \"ROLE_ADMIN\"]")
     private List<String> roles;
 
-    public JwtResponse(String token, String id, String username, String email, List<String> roles) {
+    @Schema(description = "User's profile details")
+    private UserProfile userProfile;
+
+    @Schema(description = "User's organization details")
+    private Organization organization;
+
+    public JwtResponse(String token, String id, String username, String email, List<String> roles, 
+                       UserProfile userProfile, Organization organization) {
         this.token = token;
         this.id = id;
         this.username = username;
         this.email = email;
         this.roles = roles;
-    }
-    
-    public JwtResponse( String id, String username, String email, List<String> roles) {
-        this.id = id;
-        this.username = username;
-        this.email = email;
-        this.roles = roles;
+        this.userProfile = userProfile;
+        this.organization = organization;
     }
 
-    // Getters and setters
-
+    // Getters and setters for all fields
     public String getToken() {
         return token;
     }
@@ -77,5 +81,21 @@ public class JwtResponse implements ResponseDto {
 
     public void setRoles(List<String> roles) {
         this.roles = roles;
+    }
+
+    public UserProfile getUserProfile() {
+        return userProfile;
+    }
+
+    public void setUserProfile(UserProfile userProfile) {
+        this.userProfile = userProfile;
+    }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
     }
 }
