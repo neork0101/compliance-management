@@ -56,6 +56,7 @@ import com.in.security.models.ERole;
 import com.in.security.models.Role;
 import com.in.security.models.User;
 import com.in.security.models.OnboardedUser;
+import com.in.security.models.Organization;
 import com.in.security.models.UserProfile;
 import com.in.security.util.AppConstants;
 
@@ -125,6 +126,22 @@ public class AuthController {
 
         // Get user details
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        
+     // Retrieve User from the repository
+        User user = userRepository.findById(userDetails.getId()).orElse(null);
+        
+        // Retrieve UserProfile
+        UserProfile userProfile = userProfileRepository.findByUserId(userDetails.getId());
+
+        if (userProfile == null) {
+            LOG.warn("UserProfile not found for user ID: {}", userDetails.getId());
+        }
+
+     // Retrieve Organization 
+        Organization organization = (user != null) ? user.getOrganization() : null;
+        if (organization == null) {
+            LOG.warn("Organization not found for user ID: {}", userDetails.getId());
+        }
 
         // Check if user can skip 2FA
         if (userDetailsServiceImpl.skip2FA(userDetails)) {
@@ -138,7 +155,8 @@ public class AuthController {
 
             // Create Response object with token
             JwtResponse jwtResponse = new JwtResponse(jwtToken, userDetails.getId(), userDetails.getUsername(),
-                    userDetails.getEmail(), roles);
+                    userDetails.getEmail(), roles, userProfile,
+                    organization);
 
             LOG.info("User {} successfully authenticated with direct JWT token", loginRequest.getUsername());
 
@@ -165,7 +183,8 @@ public class AuthController {
             );
             
             JwtResponse jwtResponse = new JwtResponse(null, userDetails.getId(), userDetails.getUsername(),
-                    userDetails.getEmail(), roles);
+                    userDetails.getEmail(), roles,userProfile,
+                    organization);
             
             LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
             return new ResponseEntity<>(jwtResponse, HttpStatus.OK);
@@ -1081,9 +1100,12 @@ package com.in.auth.payload.response;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.in.auth.dto.ResponseDto;
-
+import com.in.security.models.UserProfile;
+import com.in.security.models.Organization;
 import io.swagger.v3.oas.annotations.media.Schema;
+
 
 public class JwtResponse implements ResponseDto {
     @Schema(description = "JWT token", example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
@@ -1101,23 +1123,24 @@ public class JwtResponse implements ResponseDto {
     @Schema(description = "List of roles assigned to the user", example = "[\"ROLE_USER\", \"ROLE_ADMIN\"]")
     private List<String> roles;
 
-    public JwtResponse(String token, String id, String username, String email, List<String> roles) {
+    @Schema(description = "User's profile details")
+    private UserProfile userProfile;
+
+    @Schema(description = "User's organization details")
+    private Organization organization;
+
+    public JwtResponse(String token, String id, String username, String email, List<String> roles, 
+                       UserProfile userProfile, Organization organization) {
         this.token = token;
         this.id = id;
         this.username = username;
         this.email = email;
         this.roles = roles;
-    }
-    
-    public JwtResponse( String id, String username, String email, List<String> roles) {
-        this.id = id;
-        this.username = username;
-        this.email = email;
-        this.roles = roles;
+        this.userProfile = userProfile;
+        this.organization = organization;
     }
 
-    // Getters and setters
-
+    // Getters and setters for all fields
     public String getToken() {
         return token;
     }
@@ -1157,7 +1180,24 @@ public class JwtResponse implements ResponseDto {
     public void setRoles(List<String> roles) {
         this.roles = roles;
     }
+
+    public UserProfile getUserProfile() {
+        return userProfile;
+    }
+
+    public void setUserProfile(UserProfile userProfile) {
+        this.userProfile = userProfile;
+    }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
+    }
 }
+
 // File: src/main/java/com/in/auth/payload/response/MessageResponse.java
 
 package com.in.auth.payload.response;
@@ -1303,7 +1343,8 @@ import com.in.security.models.UserProfile;
 @Repository
 public interface UserProfileRepository extends MongoRepository<UserProfile, String> {
     
-
+	//custom method for onboarding layer signin
+	UserProfile findByUserId(String userId);
 }
 
 
@@ -2952,12 +2993,15 @@ package com.in.security.models;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 
 import java.util.List;
 
 @Document(collection = "Organization")
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Organization {
     @Id
     private String id;
@@ -3123,6 +3167,8 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -3131,6 +3177,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(collection = "user_profiles")
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class UserProfile {
     
 	@Id
@@ -4104,7 +4151,7 @@ eureka:
       key-store-password: passw0rd
       key-store-type: PKCS12
     serviceUrl:
-      defaultZone: https://139.59.67.255:8761/eureka/
+      defaultZone: https://139.59.40.176:8761/eureka/
       #defaultZone: https://localhost:8761/eureka/
 
 security:

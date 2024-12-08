@@ -23,6 +23,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import lombok.extern.slf4j.Slf4j;
@@ -34,16 +37,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@Slf4j
+
 public class OnboardingService {
     
     private static final Logger log = LoggerFactory.getLogger(OnboardingService.class);
     
-    @Autowired
-    private OrganizationRepository organizationRepository;
-    
-    @Autowired
-    private OnboardedUserRepository onboardedUserRepository;
+  
     
     @Autowired
     private RoleRepository roleRepository;
@@ -68,14 +67,12 @@ public class OnboardingService {
         try (FileInputStream fis = new FileInputStream(new File(filePath));
              Workbook workbook = new XSSFWorkbook(fis)) {
             
-            // Process all data first before any database operations
             log.info("Processing organization sheet...");
             List<Organization> organizations = processOrganizationSheet(workbook);
             
             log.info("Processing user sheet...");
             List<OnboardedUser> users = processUserSheet(workbook, organizations);
             
-            // Handle database operations in a transaction
             return executeInTransaction(organizations, users);
         } catch (IOException e) {
             log.error("IO error while processing excel file", e);
@@ -86,27 +83,24 @@ public class OnboardingService {
         }
     }
 
+
     /**
      * Execute database operations within a MongoDB transaction
      */
     private ProcessingResult executeInTransaction(List<Organization> organizations, List<OnboardedUser> users) {
         try (ClientSession session = mongoClient.startSession()) {
             try {
-                // Start transaction
                 session.startTransaction();
                 
-                // Save organizations
-                List<Organization> savedOrgs = saveOrganizations(session, organizations);
-                log.info("Saved {} organizations", savedOrgs.size());
+                List<Organization> processedOrgs = upsertOrganizations(session, organizations);
+                log.info("Processed {} organizations", processedOrgs.size());
                 
-                // Update and save users
-                List<OnboardedUser> savedUsers = saveUsers(session, users, savedOrgs.get(0));
-                log.info("Saved {} users", savedUsers.size());
+                List<OnboardedUser> processedUsers = upsertUsers(session, users, processedOrgs.get(0));
+                log.info("Processed {} users", processedUsers.size());
                 
-                // Commit transaction
                 session.commitTransaction();
                 
-                return new ProcessingResult(savedOrgs.size(), savedUsers.size());
+                return new ProcessingResult(processedOrgs.size(), processedUsers.size());
                 
             } catch (Exception e) {
                 log.error("Error during transaction, performing rollback", e);
@@ -115,35 +109,69 @@ public class OnboardingService {
             }
         }
     }
-
-    /**
-     * Save organizations within the transaction context
-     */
-    private List<Organization> saveOrganizations(ClientSession session, List<Organization> organizations) {
-        List<Organization> savedOrgs = new ArrayList<>();
+    
+    private List<Organization> upsertOrganizations(ClientSession session, List<Organization> organizations) {
+        List<Organization> processedOrgs = new ArrayList<>();
+        
         for (Organization org : organizations) {
-            // Need to bind the save operation to the session
-            Organization savedOrg = mongoTemplate.withSession(session)
-                .execute(action -> organizationRepository.save(org));
-            savedOrgs.add(savedOrg);
+            // Check if organization already exists
+            Query query = new Query(Criteria.where("name").is(org.getName()));
+            Organization existingOrg = mongoTemplate.findOne(query, Organization.class);
+            
+            if (existingOrg != null) {
+                // Update existing organization
+                log.info("Updating existing organization: {}", org.getName());
+                Update update = new Update()
+                    .set("location", org.getLocation())
+                    .set("subscriptionsCount", org.getSubscriptionsCount())
+                    .set("modules", org.getModules());
+                
+                mongoTemplate.updateFirst(query, update, Organization.class);
+                org.setId(existingOrg.getId()); // Set ID for reference
+            } else {
+                // Create new organization
+                log.info("Creating new organization: {}", org.getName());
+                org = mongoTemplate.save(org);
+            }
+            
+            processedOrgs.add(org);
         }
-        return savedOrgs;
+        
+        return processedOrgs;
+    }
+    
+    private List<OnboardedUser> upsertUsers(ClientSession session, List<OnboardedUser> users, Organization organization) {
+        List<OnboardedUser> processedUsers = new ArrayList<>();
+        
+        for (OnboardedUser user : users) {
+            // Check if user already exists
+            Query query = new Query(Criteria.where("email").is(user.getEmail()));
+            OnboardedUser existingUser = mongoTemplate.findOne(query, OnboardedUser.class);
+            
+            if (existingUser != null) {
+                // Update existing user
+                log.info("Updating existing user: {}", user.getEmail());
+                Update update = new Update()
+                    .set("roles", user.getRoles())
+                    .set("organization", organization)
+                    .set("status", user.getStatus());
+                
+                mongoTemplate.updateFirst(query, update, OnboardedUser.class);
+                user.setId(existingUser.getId()); // Set ID for reference
+            } else {
+                // Create new user
+                log.info("Creating new user: {}", user.getEmail());
+                user.setOrganization(organization);
+                user = mongoTemplate.save(user);
+            }
+            
+            processedUsers.add(user);
+        }
+        
+        return processedUsers;
     }
 
-    /**
-     * Save users within the transaction context
-     */
-    private List<OnboardedUser> saveUsers(ClientSession session, List<OnboardedUser> users, Organization organization) {
-        List<OnboardedUser> savedUsers = new ArrayList<>();
-        for (OnboardedUser user : users) {
-            user.setOrganization(organization);
-            // Need to bind the save operation to the session
-            OnboardedUser savedUser = mongoTemplate.withSession(session)
-                .execute(action -> onboardedUserRepository.save(user));
-            savedUsers.add(savedUser);
-        }
-        return savedUsers;
-    }
+    
 
     private void validateFile(String filePath) {
         File file = new File(filePath);
@@ -207,7 +235,6 @@ public class OnboardingService {
         org.setName(name);
         org.setLocation(formatter.formatCellValue(row.getCell(1)));
         
-        // Handle numeric cell value safely
         Cell subscriptionCell = row.getCell(2);
         if (subscriptionCell != null) {
             if (subscriptionCell.getCellType() == CellType.NUMERIC) {
@@ -262,6 +289,7 @@ public class OnboardingService {
         return users;
     }
 
+
     private OnboardedUser extractUser(Row row, DataFormatter formatter, List<Organization> organizations) {
         String email = formatter.formatCellValue(row.getCell(0));
         if (StringUtils.isBlank(email)) {
@@ -271,7 +299,6 @@ public class OnboardingService {
         OnboardedUser user = new OnboardedUser();
         user.setEmail(email.trim());
 
-        // Process roles
         String rolesStr = formatter.formatCellValue(row.getCell(1));
         if (StringUtils.isBlank(rolesStr)) {
             throw new ExcelProcessingException("Roles cannot be empty for user: " + email);
@@ -299,4 +326,5 @@ public class OnboardingService {
 
         return user;
     }
+    
 }
