@@ -1,22 +1,22 @@
 package com.in.auth.service;
 
-import com.in.auth.repository.OnboardedUserRepository;
-import com.in.auth.repository.OrganizationRepository;
-import com.in.auth.repository.RoleRepository;
-import com.mongodb.client.ClientSession;
-import com.mongodb.client.MongoClient;
-import com.in.security.exception.ExcelProcessingException;
-import com.in.security.exception.FileNotFoundException;
-import com.in.security.exception.InvalidFileFormatException;
-import com.in.security.models.ERole;
-import com.in.security.models.OnboardedUser;
-import com.in.security.models.Organization;
-import com.in.security.models.Role;
-import com.in.auth.dto.ProcessingResult;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,13 +28,18 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
-import lombok.extern.slf4j.Slf4j;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.util.*;
-import java.util.stream.Collectors;
+import com.in.auth.dto.ProcessingResult;
+import com.in.auth.repository.RoleRepository;
+import com.in.security.exception.ExcelProcessingException;
+import com.in.security.exception.FileNotFoundException;
+import com.in.security.exception.InvalidFileFormatException;
+import com.in.security.models.ERole;
+import com.in.security.models.Location;
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.Organization;
+import com.in.security.models.Role;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoClient;
 
 @Service
 
@@ -233,7 +238,9 @@ public class OnboardingService {
 
         Organization org = new Organization();
         org.setName(name);
-        org.setLocation(formatter.formatCellValue(row.getCell(1)));
+        Location loc = new Location();
+        loc.setCity(formatter.formatCellValue(row.getCell(1)));
+        org.setLocation(loc);
         
         Cell subscriptionCell = row.getCell(2);
         if (subscriptionCell != null) {

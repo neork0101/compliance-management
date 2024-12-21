@@ -394,8 +394,8 @@ public class AuthController {
 	                LOG.info("Adding ADMIN role");
 	                roles.add(adminRole);
 	                break;
-	            case "mod":
-	                Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
+	            case "ROLE_INVESTIGATOR":
+	                Role modRole = roleRepository.findByName(ERole.ROLE_INVESTIGATOR)
 	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
 	                LOG.info("Adding MODERATOR role");
 	                roles.add(modRole);

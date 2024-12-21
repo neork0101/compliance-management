@@ -1,9 +1,8 @@
 package com.in.auth.repository;
 
-import com.in.security.models.OnboardedUser;
-import com.in.security.models.User;
-
 import org.springframework.data.mongodb.repository.MongoRepository;
+
+import com.in.security.models.OnboardedUser;
 
 public interface OnboardedUserRepository extends MongoRepository<OnboardedUser, String> {
     // Find a user by email

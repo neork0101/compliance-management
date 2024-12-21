@@ -1,7 +1,7 @@
 package com.in;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,12 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 
+import com.in.auth.repository.RoleRepository;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
-import com.in.auth.repository.RoleRepository;
 
 import jakarta.annotation.PostConstruct;
 
@@ -27,41 +25,30 @@ public class IdentitySecurityManagement {
 	private static final Logger LOG = LoggerFactory.getLogger(IdentitySecurityManagement.class);
 	
 	@Autowired(required = true)
-	RoleRepository roleRepo;
+	RoleRepository roleRepository;
 	
 	public static void main(String[] args) {
 		SpringApplication.run(IdentitySecurityManagement	.class, args);
 	}
 	
-	@PostConstruct
-	public void seeder() {
-	    List<Role> adminRole = roleRepo.findAll();
-
-	    if (!adminRole.isEmpty()) {
-	        LOG.info("Identity Management App started - Roles " + adminRole.size());
-	    } else {
-	        List<Role> roles = new ArrayList<>();
-	        
-	        Role roleSuperAdmin = new Role();
-	        roleSuperAdmin.setName(ERole.ROLE_SUPERADMIN);
-	        roles.add(roleSuperAdmin);
-	        
-	        Role roleAdmin = new Role();
-	        roleAdmin.setName(ERole.ROLE_ADMIN);
-	        roles.add(roleAdmin);
-	        
-	        Role roleMod = new Role();
-	        roleMod.setName(ERole.ROLE_MODERATOR);
-	        roles.add(roleMod);
-
-	        Role roleUser = new Role();
-	        roleUser.setName(ERole.ROLE_USER);
-	        roles.add(roleUser);
-	        
-	        roleRepo.saveAll(roles);
-	        
-	        LOG.info("Initial roles created successfully");
-	    }
-	}
+	/**
+     * Method to ensure all roles are present in the database.
+     * Adds only the missing roles.
+     */
+    @PostConstruct
+    public void initializeRoles() {
+        Arrays.stream(ERole.values()).forEach(roleEnum -> {
+            // Check if the role already exists
+            Optional<Role> existingRole = roleRepository.findByName(roleEnum);
+            if (existingRole.isEmpty()) {
+                // Save the missing role
+                Role role = new Role(roleEnum);
+                roleRepository.save(role);
+                System.out.println("Role added to DB: " + roleEnum);
+            } else {
+                System.out.println("Role already exists in DB: " + roleEnum);
+            }
+        });
+    }
 
 }

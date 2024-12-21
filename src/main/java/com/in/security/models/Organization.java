@@ -1,25 +1,31 @@
 package com.in.security.models;
 
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.DBRef;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 
 import lombok.Data;
 
-import java.util.List;
-
 @Document(collection = "Organization")
 @Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class Organization {
     @Id
     private String id;
     private String name;
-    private String location;
+    private String acronym;
+    private String type; //E.g (Academia, Community College, Polytechnic, Research Institute, Hospital
+    private Location location;
+    private List<Department> departments;
     private int subscriptionsCount;
     private List<String> modules;
+    @DBRef
+    @JsonManagedReference
+    private List<OnboardedUser> onboardedUsers=new ArrayList<>();
 
-  
 }
