@@ -25,8 +25,8 @@ identity:
 # Email API configuration
 email:
   api:
-    base-url: http://api.fignos.com:8093/communication/emails
-    password-reset-url: http://api.fignos.com:8093/signin/reset-password
+    base-url: http://api.fignos.com:8093/api/communication/emails
+    password-reset-url: https://api.fignos.com/identitymanagement/api/auth/reset-password
 
 eureka:
   instance:

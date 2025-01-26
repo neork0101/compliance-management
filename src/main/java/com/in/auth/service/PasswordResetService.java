@@ -24,7 +24,7 @@ public class PasswordResetService {
     private String emailApiBaseUrl;
     
     @Value("${email.api.password-reset-url}")
-    private String passwordResetUrl="http://139.59.40.176:8091/signin/reset-password";
+    private String passwordResetUrl;
 
     @Autowired
     private WebClient.Builder webClientBuilder;
