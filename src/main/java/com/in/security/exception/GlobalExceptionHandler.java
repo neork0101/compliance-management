@@ -23,8 +23,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ErrorDetails> handleBadCredentialsException(BadCredentialsException ex, WebRequest request) {
         ErrorDetails errorDetails = new ErrorDetails(
-            HttpStatus.UNAUTHORIZED.value(), 
-            "Invalid credentials", 
+            HttpStatus.UNAUTHORIZED.value(),
+            "Invalid credentials",
             request.getDescription(false)
         );
         return new ResponseEntity<>(errorDetails, HttpStatus.UNAUTHORIZED);
@@ -34,13 +34,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleGlobalException(Exception ex, WebRequest request) {
         ErrorDetails errorDetails = new ErrorDetails(
-            HttpStatus.INTERNAL_SERVER_ERROR.value(), 
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
             ex.getMessage(),
             request.getDescription(false)
         );
         return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-    
+
     @ExceptionHandler(ExcelProcessingException.class)
     public ResponseEntity<ErrorDetails> handleExcelProcessingException(ExcelProcessingException ex, WebRequest request) {
         log.error("Excel processing error", ex);

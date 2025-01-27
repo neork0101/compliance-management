@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.in.auth.controller.AuthController;
 import com.in.auth.repository.UserProfileRepository;
 import com.in.security.models.UserProfile;
 
@@ -19,7 +18,7 @@ import com.in.security.models.UserProfile;
  */
 @Service
 public class UserProfileService {
-	
+
 	private static final Logger logger = LoggerFactory.getLogger(UserProfileService.class);
 
     private final UserProfileRepository userProfileRepository;
@@ -92,11 +91,11 @@ public class UserProfileService {
             }
             if (updatedUserProfile.getProfilePicture() != null) {
                 existingUserProfile.setProfilePicture(updatedUserProfile.getProfilePicture());
-            }    
+            }
             // Save the updated user profile
             return userProfileRepository.save(existingUserProfile);
         }
-        
+
         return null;
     }
 

@@ -31,23 +31,23 @@ public class User {
   @NotBlank
   @Size(max = 120)
   private String password;
-  
+
   private String resetToken;
   private LocalDateTime tokenExpiration;
 
   @DBRef
   private Set<Role> roles = new HashSet<>();
-  
+
   @DBRef
   private UserProfile userProfile;
-  
+
   @DBRef
   private Organization organization = new Organization();
-  
+
   private String status;
-  
+
   private String lastLogin;
-  
+
   private String failedLoginAtetmpts;
 
   public User() {

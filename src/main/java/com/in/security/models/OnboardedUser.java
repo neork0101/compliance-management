@@ -20,21 +20,21 @@ import lombok.Data;
 public class OnboardedUser {
     @Id
     private String id;
-    
+
     @NotBlank
     @Size(max = 50)
     @Email
     private String email;
-    
+
     @DBRef
     private Set<Role> roles = new HashSet<>();
-    
+
     @DBRef
     @JsonBackReference
     private Organization organization = new Organization();
-    
+
     @NotBlank
     private String status;
 
- 
+
 }

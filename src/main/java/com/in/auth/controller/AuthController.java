@@ -41,10 +41,10 @@ import com.in.auth.service.UserDetailsImpl;
 import com.in.auth.service.UserDetailsServiceImpl;
 import com.in.security.jwt.JwtUtils;
 import com.in.security.models.ERole;
-import com.in.security.models.Role;
-import com.in.security.models.User;
 import com.in.security.models.OnboardedUser;
 import com.in.security.models.Organization;
+import com.in.security.models.Role;
+import com.in.security.models.User;
 import com.in.security.models.UserProfile;
 import com.in.security.util.AppConstants;
 
@@ -69,13 +69,13 @@ public class AuthController {
 
 	@Autowired
 	UserRepository userRepository;
-	
+
 	@Autowired
     UserProfileRepository userProfileRepository;
 
 	@Autowired
 	RoleRepository roleRepository;
-	
+
 	@Autowired
     OnboardedUserRepository onboardedUserRepository;
 
@@ -93,7 +93,7 @@ public class AuthController {
 
 	/**
 	 * Authenticates a user and returns a JWT token.
-	 * 
+	 *
 	 * @param loginRequest The login request containing username and password
 	 * @return ResponseEntity containing the JWT token and user details
 	 */
@@ -114,10 +114,10 @@ public class AuthController {
 
         // Get user details
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        
+
      // Retrieve User from the repository
         User user = userRepository.findById(userDetails.getId()).orElse(null);
-        
+
         // Retrieve UserProfile
         UserProfile userProfile = userProfileRepository.findByUserId(userDetails.getId());
 
@@ -125,7 +125,7 @@ public class AuthController {
             LOG.warn("UserProfile not found for user ID: {}", userDetails.getId());
         }
 
-     // Retrieve Organization 
+     // Retrieve Organization
         Organization organization = (user != null) ? user.getOrganization() : null;
         if (organization == null) {
             LOG.warn("Organization not found for user ID: {}", userDetails.getId());
@@ -135,7 +135,7 @@ public class AuthController {
         if (userDetailsServiceImpl.skip2FA(userDetails)) {
             // Generate JWT token for allowed roles
             String jwtToken = jwtUtils.generateToken(userDetails);
-            
+
             // Get user roles
             List<String> roles = userDetails.getAuthorities().stream()
                     .map(item -> item.getAuthority())
@@ -153,7 +153,7 @@ public class AuthController {
                     .header("Authorization", "Bearer " + jwtToken)
                     .body(jwtResponse);
         } else {
-        	
+
         	// Get user roles
     		List<String> roles = userDetails.getAuthorities().stream().map(item -> item.getAuthority())
     				.collect(Collectors.toList());
@@ -163,17 +163,17 @@ public class AuthController {
             userData.put("username", userDetails.getUsername());
             userData.put("email", userDetails.getEmail());
             userData.put("roles", roles);
-            
+
             CommunicationResponse<Map<String, Object>> response = new CommunicationResponse<>(
                 "2FA_REQUIRED",
                 "Two-factor authentication required",
                 userData
             );
-            
+
             JwtResponse jwtResponse = new JwtResponse(null, userDetails.getId(), userDetails.getUsername(),
                     userDetails.getEmail(), roles,userProfile,
                     organization);
-            
+
             LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
             return new ResponseEntity<>(jwtResponse, HttpStatus.OK);
         }
@@ -181,7 +181,7 @@ public class AuthController {
 
 	/**
 	 * Registers a new user.
-	 * 
+	 *
 	 * @param signUpRequest The signup request containing user details
 	 * @return ResponseEntity with a success message or error details
 	 */
@@ -205,7 +205,7 @@ public class AuthController {
 			LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
 			return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
 		}
-		
+
 		// check if user email is available in onboarded_users collection
 		OnboardedUser onboardedUser=onboardedUserRepository.findByEmail(signUpRequest.getEmail());
 		if(onboardedUser==null)
@@ -218,9 +218,9 @@ public class AuthController {
 		User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
 				encoder.encode(signUpRequest.getPassword()));
 
-		
+
 		/*Set<String> strRoles = signUpRequest.getRoles();
-		
+
 		Set<Role> roles = new HashSet<>();
 
 		if (strRoles == null) {
@@ -257,12 +257,12 @@ public class AuthController {
 		user.setOrganization(onboardedUser.getOrganization());
 		user.setStatus("Active");
 		User savedUser=userRepository.save(user);
-		
-		// Creating a user profile when user is created 
+
+		// Creating a user profile when user is created
 		UserProfile userProfile=new UserProfile(null,savedUser.getId(),null,null,signUpRequest.getEmail(),null,null,signUpRequest.getUsername(),null,null,null,"Active");
 		//UserProfile userProfile=new UserProfile(signUpRequest.getUsername(),"test","test",signUpRequest.getEmail(),"test","test",signUpRequest.getUsername(),"test","test");
         userProfileRepository.save(userProfile);
-        
+
         // setting status of Onboarded user
            onboardedUser.setStatus("SignUp_Completed");
            onboardedUserRepository.save(onboardedUser);
@@ -271,8 +271,8 @@ public class AuthController {
 		return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
 	}
 
-	
-	
+
+
 	/**
 	 * Handles forgot password requests by initiating the password reset process.
 	 *
@@ -344,11 +344,11 @@ public class AuthController {
 			return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
 		}
 	}
-	
+
 
 	/**
 	 * Registers a new user.
-	 * 
+	 *
 	 * @param signUpRequest The signup request containing user details
 	 * @return ResponseEntity with a success message or error details
 	 */
@@ -387,7 +387,7 @@ public class AuthController {
 
 	    if (strRoles != null) {
 	        strRoles.forEach(role -> {
-	            switch (role.toLowerCase()) {  //Convert to lowercase for case-insensitive comparison        
+	            switch (role.toLowerCase()) {  //Convert to lowercase for case-insensitive comparison
 	            case "admin":
 	                Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
 	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
@@ -412,11 +412,11 @@ public class AuthController {
 	    user.setRoles(roles);
 	    userRepository.save(user);
 
-	    LOG.info("Method: registerUser - User registered successfully with roles: {}", 
+	    LOG.info("Method: registerUser - User registered successfully with roles: {}",
 	             roles.stream().map(r -> r.getName().name()).collect(Collectors.joining(", ")));
 	    return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
 	}
-	
+
 	@GetMapping("/roles")
 	public ResponseEntity<?> checkRoles() {
 	    List<Role> roles = roleRepository.findAll();

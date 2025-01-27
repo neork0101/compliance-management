@@ -6,7 +6,7 @@ import lombok.Data;
 public class PasswordResetResponse {
     private String email;
     private String resetLink;
-    
+
     public PasswordResetResponse(String email, String resetLink) {
         this.email = email;
         this.resetLink = resetLink;

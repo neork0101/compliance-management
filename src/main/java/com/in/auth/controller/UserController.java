@@ -81,11 +81,13 @@ public class UserController {
 			user.setUsername(updatedUser.getUsername());
 			// user.setEmail(updatedUser.getEmail());
 			//user.setStatus("Active");
-			if (updatedUser.getRoles() != null)
+			if (updatedUser.getRoles() != null) {
 				user.setRoles(updatedUser.getRoles());
+			}
 
-			if (updatedUser.getOrganization() != null)
+			if (updatedUser.getOrganization() != null) {
 				user.setOrganization(updatedUser.getOrganization());
+			}
 			// Update any other relevant fields here
 			user = userRepository.save(user);
 			log.info("Success updateUser: {}", id);

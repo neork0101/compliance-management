@@ -42,7 +42,7 @@ public class WebSecurityConfig {
         return authProvider;
     }
 
-    
+
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
@@ -65,7 +65,7 @@ public class WebSecurityConfig {
             // Use stateless session management
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             // Configure authorization rules
-            .authorizeHttpRequests(auth -> 
+            .authorizeHttpRequests(auth ->
                 auth.requestMatchers("/identitymanagement/api/auth/**").permitAll()
                 	.requestMatchers("/identitymanagement/api/otp/**").permitAll()
                 	//.requestMatchers("/identitymanagement/api/organization").permitAll()

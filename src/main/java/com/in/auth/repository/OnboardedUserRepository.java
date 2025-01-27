@@ -7,6 +7,6 @@ import com.in.security.models.OnboardedUser;
 public interface OnboardedUserRepository extends MongoRepository<OnboardedUser, String> {
     // Find a user by email
     OnboardedUser findByEmail(String email);
-    
-    
+
+
 }

@@ -44,17 +44,17 @@ import com.mongodb.client.MongoClient;
 @Service
 
 public class OnboardingService {
-    
+
     private static final Logger log = LoggerFactory.getLogger(OnboardingService.class);
-    
-  
-    
+
+
+
     @Autowired
     private RoleRepository roleRepository;
-    
+
     @Autowired
     private MongoClient mongoClient;
-    
+
     @Autowired
     private MongoTemplate mongoTemplate;
 
@@ -68,16 +68,16 @@ public class OnboardingService {
     public ProcessingResult processExcelFile(String filePath) {
         log.info("Starting to process excel file: {}", filePath);
         validateFile(filePath);
-        
+
         try (FileInputStream fis = new FileInputStream(new File(filePath));
              Workbook workbook = new XSSFWorkbook(fis)) {
-            
+
             log.info("Processing organization sheet...");
             List<Organization> organizations = processOrganizationSheet(workbook);
-            
+
             log.info("Processing user sheet...");
             List<OnboardedUser> users = processUserSheet(workbook, organizations);
-            
+
             return executeInTransaction(organizations, users);
         } catch (IOException e) {
             log.error("IO error while processing excel file", e);
@@ -96,17 +96,17 @@ public class OnboardingService {
         try (ClientSession session = mongoClient.startSession()) {
             try {
                 session.startTransaction();
-                
+
                 List<Organization> processedOrgs = upsertOrganizations(session, organizations);
                 log.info("Processed {} organizations", processedOrgs.size());
-                
+
                 List<OnboardedUser> processedUsers = upsertUsers(session, users, processedOrgs.get(0));
                 log.info("Processed {} users", processedUsers.size());
-                
+
                 session.commitTransaction();
-                
+
                 return new ProcessingResult(processedOrgs.size(), processedUsers.size());
-                
+
             } catch (Exception e) {
                 log.error("Error during transaction, performing rollback", e);
                 session.abortTransaction();
@@ -114,15 +114,15 @@ public class OnboardingService {
             }
         }
     }
-    
+
     private List<Organization> upsertOrganizations(ClientSession session, List<Organization> organizations) {
         List<Organization> processedOrgs = new ArrayList<>();
-        
+
         for (Organization org : organizations) {
             // Check if organization already exists
             Query query = new Query(Criteria.where("name").is(org.getName()));
             Organization existingOrg = mongoTemplate.findOne(query, Organization.class);
-            
+
             if (existingOrg != null) {
                 // Update existing organization
                 log.info("Updating existing organization: {}", org.getName());
@@ -130,7 +130,7 @@ public class OnboardingService {
                     .set("location", org.getLocation())
                     .set("subscriptionsCount", org.getSubscriptionsCount())
                     .set("modules", org.getModules());
-                
+
                 mongoTemplate.updateFirst(query, update, Organization.class);
                 org.setId(existingOrg.getId()); // Set ID for reference
             } else {
@@ -138,21 +138,21 @@ public class OnboardingService {
                 log.info("Creating new organization: {}", org.getName());
                 org = mongoTemplate.save(org);
             }
-            
+
             processedOrgs.add(org);
         }
-        
+
         return processedOrgs;
     }
-    
+
     private List<OnboardedUser> upsertUsers(ClientSession session, List<OnboardedUser> users, Organization organization) {
         List<OnboardedUser> processedUsers = new ArrayList<>();
-        
+
         for (OnboardedUser user : users) {
             // Check if user already exists
             Query query = new Query(Criteria.where("email").is(user.getEmail()));
             OnboardedUser existingUser = mongoTemplate.findOne(query, OnboardedUser.class);
-            
+
             if (existingUser != null) {
                 // Update existing user
                 log.info("Updating existing user: {}", user.getEmail());
@@ -160,7 +160,7 @@ public class OnboardingService {
                     .set("roles", user.getRoles())
                     .set("organization", organization)
                     .set("status", user.getStatus());
-                
+
                 mongoTemplate.updateFirst(query, update, OnboardedUser.class);
                 user.setId(existingUser.getId()); // Set ID for reference
             } else {
@@ -169,29 +169,29 @@ public class OnboardingService {
                 user.setOrganization(organization);
                 user = mongoTemplate.save(user);
             }
-            
+
             processedUsers.add(user);
         }
-        
+
         return processedUsers;
     }
 
-    
+
 
     private void validateFile(String filePath) {
         File file = new File(filePath);
-        
+
         if (!file.exists()) {
             throw new FileNotFoundException("File not found: " + filePath);
         }
-        
+
         if (!file.isFile()) {
             throw new InvalidFileFormatException("Path is not a file: " + filePath);
         }
-        
+
         String extension = FilenameUtils.getExtension(filePath).toLowerCase();
         if (!allowedExtensions.contains(extension)) {
-            throw new InvalidFileFormatException("Invalid file format. Allowed formats: " + 
+            throw new InvalidFileFormatException("Invalid file format. Allowed formats: " +
                 String.join(", ", allowedExtensions));
         }
     }
@@ -209,7 +209,10 @@ public class OnboardingService {
         DataFormatter formatter = new DataFormatter();
 
         for (Row row : sheet) {
-            if (row.getRowNum() == 0) continue; // Skip header
+            if (row.getRowNum() == 0)
+			 {
+				continue; // Skip header
+			}
 
             try {
                 Organization org = extractOrganization(row, formatter);
@@ -218,7 +221,7 @@ public class OnboardingService {
                 }
             } catch (Exception e) {
                 log.error("Error processing organization row {}", row.getRowNum(), e);
-                throw new ExcelProcessingException("Error processing organization at row " + 
+                throw new ExcelProcessingException("Error processing organization at row " +
                     (row.getRowNum() + 1), e);
             }
         }
@@ -241,7 +244,7 @@ public class OnboardingService {
         Location loc = new Location();
         loc.setCity(formatter.formatCellValue(row.getCell(1)));
         org.setLocation(loc);
-        
+
         Cell subscriptionCell = row.getCell(2);
         if (subscriptionCell != null) {
             if (subscriptionCell.getCellType() == CellType.NUMERIC) {
@@ -258,7 +261,7 @@ public class OnboardingService {
                 .filter(StringUtils::isNotBlank)
                 .collect(Collectors.toList()));
         }
-        
+
         return org;
     }
 
@@ -275,7 +278,10 @@ public class OnboardingService {
         DataFormatter formatter = new DataFormatter();
 
         for (Row row : sheet) {
-            if (row.getRowNum() == 0) continue; // Skip header
+            if (row.getRowNum() == 0)
+			 {
+				continue; // Skip header
+			}
 
             try {
                 OnboardedUser user = extractUser(row, formatter, organizations);
@@ -284,7 +290,7 @@ public class OnboardingService {
                 }
             } catch (Exception e) {
                 log.error("Error processing user row {}", row.getRowNum(), e);
-                throw new ExcelProcessingException("Error processing user at row " + 
+                throw new ExcelProcessingException("Error processing user at row " +
                     (row.getRowNum() + 1), e);
             }
         }
@@ -333,5 +339,5 @@ public class OnboardingService {
 
         return user;
     }
-    
+
 }

@@ -49,7 +49,7 @@ import com.in.security.models.User;
  * Comprehensive test class for the AuthController.
  * This class tests the authentication and registration endpoints.
  */
-@SpringBootTest 
+@SpringBootTest
 @AutoConfigureMockMvc // Automatically configures MockMvc
 @ExtendWith(TestResultLoggerExtension.class) // Extends the test with our custom TestResultLoggerExtension
 public class AuthControllerTest {
@@ -106,7 +106,7 @@ public class AuthControllerTest {
         // Arrange: Set up the test scenario
         UserDetailsImpl userDetails = new UserDetailsImpl("1", "testuser", "test@example.com", "testpassword", Collections.emptyList());
         Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null);
-        
+
         // Mock the behavior of the authentication manager and JWT utils
         when(authenticationManager.authenticate(any())).thenReturn(authentication);
         when(jwtUtils.generateToken(any(UserDetailsImpl.class))).thenReturn("test.jwt.token");

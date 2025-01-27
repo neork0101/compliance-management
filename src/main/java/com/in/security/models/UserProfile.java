@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @Document(collection = "user_profiles")
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UserProfile {
-    
+
 	@Id
     private String id;
 	@Field(name = "userId")
@@ -43,5 +43,5 @@ public class UserProfile {
     private String city;
     @Field(name = "status")
     private String status;
-  
+
 }

@@ -27,14 +27,14 @@ import lombok.extern.slf4j.Slf4j;
 @RestController
 @RequestMapping("identitymanagement/api/otp")
 @Slf4j
-public class OtpController {	
+public class OtpController {
 
     @Autowired
     private OtpService otpService;
-    
+
     @Autowired
     private JwtUtils jwtUtils;
-    
+
     @Autowired
     private UserDetailsServiceImpl userDetailsServiceImpl;
 
@@ -95,9 +95,9 @@ public class OtpController {
 
             boolean isValid = otpService.validateOtp(identifier, otp);
             if (isValid) {
-                                
+
                 User user = userDetailsServiceImpl.loadUserByEmail(identifier);
-                                
+
                 if(user == null  || user.getId() == null) {
                 	log.info("Method: validateOtp - Error: User not found for email! " + identifier);
                      return ResponseEntity.badRequest()
@@ -107,8 +107,8 @@ public class OtpController {
                 List<String> roles = UserDetailsImpl.build(user).getAuthorities().stream()
                         .map(item -> item.getAuthority())
                         .collect(Collectors.toList());
-                	
-                
+
+
                 String jwtToken = jwtUtils.generateToken(userDetails);
 
              // Create a response DTO with status and message
@@ -117,9 +117,9 @@ public class OtpController {
                     "OTP is valid.",
                     jwtToken
                 );
-                
+
                 return ResponseEntity.ok(response);
-                
+
             } else {
                 // Create an error response DTO
                 ErrorDetails errorDetails = new ErrorDetails(

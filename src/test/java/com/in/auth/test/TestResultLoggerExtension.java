@@ -1,12 +1,12 @@
 package com.in.auth.test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.TestWatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Custom TestWatcher extension to log test results.

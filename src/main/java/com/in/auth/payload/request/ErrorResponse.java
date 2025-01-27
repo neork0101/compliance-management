@@ -6,10 +6,10 @@ import lombok.Data;
 public class ErrorResponse {
 	private String status;
 	private String msg;
-	
+
 	public ErrorResponse(String status, String msg){
 		this.status=status;
 		this.msg=msg;
-		
+
 	}
 }

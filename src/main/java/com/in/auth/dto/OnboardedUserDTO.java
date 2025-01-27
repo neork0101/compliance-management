@@ -12,18 +12,18 @@ import lombok.Data;
 
 @Data
 public class OnboardedUserDTO {
-    
+
     private String id;
-    
+
     @NotBlank
     @Size(max = 50)
     @Email
     private String email;
-    
+
     private Set<String> roles;
-    
+
     private Organization organization = new Organization();
-    
+
     private String status;
 
 }

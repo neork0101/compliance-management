@@ -5,12 +5,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import com.in.auth.dto.OnboardedUserDTO;
 import com.in.auth.dto.OrganizationDTO;
-import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.repository.OnboardedUserRepository;
 import com.in.auth.repository.OrganizationRepository;
 import com.in.auth.repository.RoleRepository;
@@ -35,16 +32,16 @@ public class OrganizationService {
 
     @Autowired
     private OnboardedUserRepository onboardedUserRepository;
-    
+
     @Autowired
     private RoleRepository roleRepository;
-    
+
     @Autowired
 	UserRepository userRepository;
 
     // Save an Organization and its associated OnboardedUser
     public Organization saveOrganizationWithDependencies(OrganizationDTO requestOrg) {
-    	
+
     	Organization organization = new Organization();
     	organization.setAcronym(requestOrg.getAcronym());
     	organization.setDepartments(requestOrg.getDepartments());
@@ -53,52 +50,53 @@ public class OrganizationService {
     	organization.setName(requestOrg.getName());
     	organization.setSubscriptionsCount(requestOrg.getSubscriptionsCount());
     	organization.setType(requestOrg.getType());
-    	
+
         Organization savedOrganization = organizationRepository.save(organization);
 
         if (requestOrg.getOnboardedUsers() != null) {
-        	
+
         	requestOrg.getOnboardedUsers().forEach(user -> {
-        	
+
         		OnboardedUser existingUser= onboardedUserRepository.findByEmail(user.getEmail());
         		// Check if email is already in use
         		if (existingUser != null) {
-        			if(existingUser.getStatus().equalsIgnoreCase("Signup_Pending"))
-        				log.info("Method: registerUser - Error: Email is already taken! " + existingUser.getEmail() + " status "+existingUser.getStatus());
-        			else 
-        				log.info("Method: registerUser - Error: Email is already sign up completed! " + existingUser.getEmail() + " status "+existingUser.getStatus());
-        		
+        			if(existingUser.getStatus().equalsIgnoreCase("Signup_Pending")) {
+						log.info("Method: registerUser - Error: Email is already taken! " + existingUser.getEmail() + " status "+existingUser.getStatus());
+					} else {
+						log.info("Method: registerUser - Error: Email is already sign up completed! " + existingUser.getEmail() + " status "+existingUser.getStatus());
+					}
+
         		} else {
                     OnboardedUser  onboardedUser= new OnboardedUser();
                     onboardedUser.setEmail(user.getEmail());
-                    onboardedUser.setStatus("Signup_Pending");            
+                    onboardedUser.setStatus("Signup_Pending");
                     onboardedUser.setOrganization(savedOrganization);
                     onboardedUser.setRoles(getRoles(user.getRoles()));
                     OnboardedUser savedUser = onboardedUserRepository.save(onboardedUser);
-                    
+
                     savedOrganization.getOnboardedUsers().add(savedUser);
 
         		}
-     
+
         	});
         }
 
         return savedOrganization;
     }
-    
+
     private Set<Role> getRoles(Set<String> strRoles) {
     	Set<Role> roles = new HashSet<>();
-    	
+
     	strRoles.forEach(role -> {
 			switch (role) {
-			
+
 			case "ROLE_SUPERADMIN":
 				Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
 						.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
 				log.error("Error: Admin Role not found.");
 				roles.add(superAdminRole);
 				break;
-				
+
 			case "ROLE_ADMIN":
 				Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
 						.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
@@ -118,7 +116,7 @@ public class OrganizationService {
 				roles.add(userRole);
 			}
 		});
-    	
+
     	return roles;
     }
 

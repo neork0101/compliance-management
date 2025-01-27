@@ -2,10 +2,10 @@ package com.in.auth.payload.response;
 
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.in.auth.dto.ResponseDto;
-import com.in.security.models.UserProfile;
 import com.in.security.models.Organization;
+import com.in.security.models.UserProfile;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 
@@ -31,7 +31,7 @@ public class JwtResponse implements ResponseDto {
     @Schema(description = "User's organization details")
     private Organization organization;
 
-    public JwtResponse(String token, String id, String username, String email, List<String> roles, 
+    public JwtResponse(String token, String id, String username, String email, List<String> roles,
                        UserProfile userProfile, Organization organization) {
         this.token = token;
         this.id = id;

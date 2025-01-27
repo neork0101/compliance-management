@@ -5,7 +5,6 @@ package com.in.auth.repository;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
-import com.in.security.models.User;
 import com.in.security.models.UserProfile;
 
 /**
@@ -14,7 +13,7 @@ import com.in.security.models.UserProfile;
  */
 @Repository
 public interface UserProfileRepository extends MongoRepository<UserProfile, String> {
-    
+
 	//custom method for onboarding layer signin
 	UserProfile findByUserId(String userId);
 }

@@ -12,7 +12,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.in.auth.service.*;
+import com.in.auth.service.UserDetailsServiceImpl;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -35,7 +35,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     try {
       String jwt = parseJwt(request);
-           
+
       if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
         String username = jwtUtils.getUserNameFromJwtToken(jwt);
 
@@ -46,8 +46,8 @@ public class AuthTokenFilter extends OncePerRequestFilter {
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
       }
-      
-		
+
+
 		/*
 		 * } catch (JwtTokenException exp) { throw exp; throw new
 		 * AuthenticationException(exp.getMessage())
@@ -64,7 +64,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     String jwt = jwtUtils.getJwtFromCookies(request);
     return jwt;
   }
-  
+
   private String parseJwt(HttpServletRequest request) {
 	  String jwt =request.getHeader("Authorization");
 	  if(jwt != null && jwt.startsWith("Bearer ")) {

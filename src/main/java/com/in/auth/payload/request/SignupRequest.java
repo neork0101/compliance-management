@@ -19,7 +19,7 @@ public class SignupRequest {
   @Email
   @Schema(description = "User's email address", example = "new_user@example.com")
   private String email;
-  
+
   @Schema(description = "Roles to assign to the user", example = "[\"user\", \"admin\"]")
   private Set<String> roles;
 

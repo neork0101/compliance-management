@@ -3,9 +3,9 @@ package com.in.auth.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.in.auth.repository.RoleRepository;
 import com.in.security.models.ERole;
 import com.in.security.models.Role;
-import com.in.auth.repository.RoleRepository;
 
 import jakarta.annotation.PostConstruct;
 

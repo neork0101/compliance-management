@@ -19,18 +19,18 @@ import jakarta.annotation.PostConstruct;
 @SpringBootApplication
 @EnableDiscoveryClient
 //@EnableMongoRepositories("com.in.compliance.repository")
-//@ComponentScan(basePackages = "com.in.compliance") 
+//@ComponentScan(basePackages = "com.in.compliance")
 public class IdentitySecurityManagement {
 
 	private static final Logger LOG = LoggerFactory.getLogger(IdentitySecurityManagement.class);
-	
+
 	@Autowired(required = true)
 	RoleRepository roleRepository;
-	
+
 	public static void main(String[] args) {
 		SpringApplication.run(IdentitySecurityManagement	.class, args);
 	}
-	
+
 	/**
      * Method to ensure all roles are present in the database.
      * Adds only the missing roles.

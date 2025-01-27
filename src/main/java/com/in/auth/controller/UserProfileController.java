@@ -15,15 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.in.auth.dto.ErrorDetails;
-import com.in.auth.payload.response.MessageResponse;
 import com.in.auth.service.UserProfileService;
 import com.in.security.models.UserProfile;
-
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
 /**
  * REST Controller for User Profile Management.
