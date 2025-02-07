@@ -5,7 +5,8 @@ spring:
     name: identity-security-management
   data:
     mongodb:
-      uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin
+      uri: mongodb+srv://consent_mgr:yWjG5WRnCrFS9FvH@ctms.gdgdehg.mongodb.net/identityManagement?retryWrites=true&w=majority&tls=true&authSource=admin;
+      #uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin
       #uri: mongodb://localhost:27017/identityManagement
       socketTimeout: 60000
       connectTimeout: 60000
