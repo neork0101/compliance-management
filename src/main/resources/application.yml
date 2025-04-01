@@ -1,5 +1,11 @@
 server:
   port: 8091
+  ssl:
+   enabled: true
+   key-store: classpath:certs/compliance-registry.p12
+   key-store-password: passw0rd
+   key-store-type: PKCS12
+   key-alias: compliance
 spring:
   application:
     name: identity-security-management
@@ -45,6 +51,16 @@ eureka:
     serviceUrl:
       defaultZone: https://api.fignos.com:8761/eureka/
       #defaultZone: https://localhost:8761/eureka/
+
+# Swagger/OpenAPI configuration
+springdoc:
+ api-docs:
+  path: /swagger/identitymanagement/api-docs
+ swagger-ui:
+  path: /swagger/identitymanagement/swagger-ui.html
+  operationsSorter: method
+  tagsSorter: alpha
+  disable-swagger-default-url: true
 
 security:
   app:

@@ -68,6 +68,12 @@ public class WebSecurityConfig {
             .authorizeHttpRequests(auth ->
                 auth.requestMatchers("/identitymanagement/api/auth/**").permitAll()
                 	.requestMatchers("/identitymanagement/api/otp/**").permitAll()
+                	// Allow access to Swagger UI and API docs
+                    .requestMatchers("/swagger/identitymanagement/swagger-ui.html", 
+                                     "/swagger/identitymanagement/api-docs/**",
+                                     "/swagger/identitymanagement/swagger-ui/**",
+                                     "/swagger/identitymanagement/**",
+                                     "/swagger").permitAll()
                 	//.requestMatchers("/identitymanagement/api/organization").permitAll()
                 	//.requestMatchers("/identitymanagement/api/user/**").permitAll()
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
