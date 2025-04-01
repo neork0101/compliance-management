@@ -1,0 +1,4368 @@
+Project Structure:
+
+
+Code Files and Resources:
+
+
+
+Java Files from src/main/java:
+
+
+// File: src/main/java/com/in/auth/controller/AuthController.java
+
+package com.in.auth.controller;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.in.auth.dto.CommunicationResponse;
+import com.in.auth.dto.ErrorDetails;
+import com.in.auth.dto.ResponseDto;
+import com.in.auth.payload.request.LoginRequest;
+import com.in.auth.payload.request.SignupRequest;
+import com.in.auth.payload.response.JwtResponse;
+import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.repository.OnboardedUserRepository;
+import com.in.auth.repository.RoleRepository;
+import com.in.auth.repository.UserProfileRepository;
+import com.in.auth.repository.UserRepository;
+import com.in.auth.service.PasswordResetService;
+import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.service.UserDetailsServiceImpl;
+import com.in.security.jwt.JwtUtils;
+import com.in.security.models.ERole;
+import com.in.security.models.Role;
+import com.in.security.models.User;
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.Organization;
+import com.in.security.models.UserProfile;
+import com.in.security.util.AppConstants;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+
+@RestController
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+@RequestMapping("/identitymanagement/api/auth")
+@Tag(name = "Authentication Controller", description = "Endpoints for user authentication and registration")
+public class AuthController {
+
+	private static final Logger LOG = LoggerFactory.getLogger(AuthController.class);
+
+	@Autowired
+	AuthenticationManager authenticationManager;
+
+	@Autowired
+	UserRepository userRepository;
+	
+	@Autowired
+    UserProfileRepository userProfileRepository;
+
+	@Autowired
+	RoleRepository roleRepository;
+	
+	@Autowired
+    OnboardedUserRepository onboardedUserRepository;
+
+	@Autowired
+	PasswordEncoder encoder;
+
+	@Autowired
+	JwtUtils jwtUtils;
+
+	@Autowired
+	PasswordResetService passwordResetService;
+
+	@Autowired
+	UserDetailsServiceImpl userDetailsServiceImpl;
+
+	/**
+	 * Authenticates a user and returns a JWT token.
+	 * 
+	 * @param loginRequest The login request containing username and password
+	 * @return ResponseEntity containing the JWT token and user details
+	 */
+	@PostMapping("/signin")
+	@Operation(summary = "Authenticate user and return JWT token", description = "Authenticates the user with the provided credentials and returns a JWT token in both the Authorization header and response body.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Successfully authenticated", content = @Content(mediaType = "application/json", schema = @Schema(implementation = JwtResponse.class))),
+			@ApiResponse(responseCode = "401", description = "Invalid credentials", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
+	public ResponseEntity<ResponseDto> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
+		LOG.info("Start Method: authenticateUser");
+
+		// Authenticate the user
+		Authentication authentication = authenticationManager.authenticate(
+				new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
+
+		// Set the authentication in the SecurityContext
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // Get user details
+        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        
+     // Retrieve User from the repository
+        User user = userRepository.findById(userDetails.getId()).orElse(null);
+        
+        // Retrieve UserProfile
+        UserProfile userProfile = userProfileRepository.findByUserId(userDetails.getId());
+
+        if (userProfile == null) {
+            LOG.warn("UserProfile not found for user ID: {}", userDetails.getId());
+        }
+
+     // Retrieve Organization 
+        Organization organization = (user != null) ? user.getOrganization() : null;
+        if (organization == null) {
+            LOG.warn("Organization not found for user ID: {}", userDetails.getId());
+        }
+
+        // Check if user can skip 2FA
+        if (userDetailsServiceImpl.skip2FA(userDetails)) {
+            // Generate JWT token for allowed roles
+            String jwtToken = jwtUtils.generateToken(userDetails);
+            
+            // Get user roles
+            List<String> roles = userDetails.getAuthorities().stream()
+                    .map(item -> item.getAuthority())
+                    .collect(Collectors.toList());
+
+            // Create Response object with token
+            JwtResponse jwtResponse = new JwtResponse(jwtToken, userDetails.getId(), userDetails.getUsername(),
+                    userDetails.getEmail(), roles, userProfile,
+                    organization);
+
+            LOG.info("User {} successfully authenticated with direct JWT token", loginRequest.getUsername());
+
+            // Return ResponseEntity with JWT in header and body
+            return ResponseEntity.ok()
+                    .header("Authorization", "Bearer " + jwtToken)
+                    .body(jwtResponse);
+        } else {
+        	
+        	// Get user roles
+    		List<String> roles = userDetails.getAuthorities().stream().map(item -> item.getAuthority())
+    				.collect(Collectors.toList());
+            // User needs to complete 2FA
+        	Map<String, Object> userData = new HashMap<>();
+            userData.put("id", userDetails.getId());
+            userData.put("username", userDetails.getUsername());
+            userData.put("email", userDetails.getEmail());
+            userData.put("roles", roles);
+            
+            CommunicationResponse<Map<String, Object>> response = new CommunicationResponse<>(
+                "2FA_REQUIRED",
+                "Two-factor authentication required",
+                userData
+            );
+            
+            JwtResponse jwtResponse = new JwtResponse(null, userDetails.getId(), userDetails.getUsername(),
+                    userDetails.getEmail(), roles,userProfile,
+                    organization);
+            
+            LOG.info("User {} requires 2FA authentication", loginRequest.getUsername());
+            return new ResponseEntity<>(jwtResponse, HttpStatus.OK);
+        }
+	}
+
+	/**
+	 * Registers a new user.
+	 * 
+	 * @param signUpRequest The signup request containing user details
+	 * @return ResponseEntity with a success message or error details
+	 */
+	@PostMapping("/signup")
+	@Operation(summary = "Register a new user", description = "Creates a new user account with the provided details.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "User registered successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = MessageResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Bad request, invalid input", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
+	public ResponseEntity<ResponseDto> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
+		LOG.info("Start Method: registerUser");
+
+		// Check if username is already taken
+		if (userRepository.existsByUsername(signUpRequest.getUsername())) {
+			LOG.info("Method: registerUser - Error: Username is already taken!");
+			return ResponseEntity.badRequest()
+					.body(new MessageResponse("Error: Username is already taken! " + signUpRequest.getUsername()));
+		}
+
+		// Check if email is already in use
+		if (userRepository.existsByEmail(signUpRequest.getEmail())) {
+			LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
+			return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
+		}
+		
+		// check if user email is available in onboarded_users collection
+		OnboardedUser onboardedUser=onboardedUserRepository.findByEmail(signUpRequest.getEmail());
+		if(onboardedUser==null)
+		{
+		    LOG.info("Method: registerUser - Error: Email is not available in onboarded users list:" + signUpRequest.getEmail());
+            return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is not available in onboarded users list!"));
+		}
+
+		// Create new user's account
+		User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
+				encoder.encode(signUpRequest.getPassword()));
+
+		
+		/*Set<String> strRoles = signUpRequest.getRoles();
+		
+		Set<Role> roles = new HashSet<>();
+
+		if (strRoles == null) {
+			Role userRole = roleRepository.findByName(ERole.ROLE_USER)
+					.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+			LOG.error("Error: User Role not found.");
+			roles.add(userRole);
+		} else {
+			strRoles.forEach(role -> {
+				switch (role) {
+				case "admin":
+					Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
+							.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+					LOG.error("Error: Admin Role not found.");
+					roles.add(adminRole);
+					break;
+				case "mod":
+					Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
+							.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+					LOG.error("Error: Moderator Role not found.");
+					roles.add(modRole);
+					break;
+				default:
+					Role userRole = roleRepository.findByName(ERole.ROLE_USER)
+							.orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+					LOG.error("Error: User Role not found.");
+					roles.add(userRole);
+				}
+			});
+		}*/
+
+		// retrieving roles and organization details from OnboardedUser collection and setting it to the user.
+		user.setRoles(onboardedUser.getRoles());
+		user.setOrganization(onboardedUser.getOrganization());
+		user.setStatus("Active");
+		User savedUser=userRepository.save(user);
+		
+		// Creating a user profile when user is created 
+		UserProfile userProfile=new UserProfile(null,savedUser.getId(),null,null,signUpRequest.getEmail(),null,null,signUpRequest.getUsername(),null,null,null,"Active");
+		//UserProfile userProfile=new UserProfile(signUpRequest.getUsername(),"test","test",signUpRequest.getEmail(),"test","test",signUpRequest.getUsername(),"test","test");
+        userProfileRepository.save(userProfile);
+        
+        // setting status of Onboarded user
+           onboardedUser.setStatus("SignUp_Completed");
+           onboardedUserRepository.save(onboardedUser);
+
+		LOG.info("Method: registerUser - User registered successfully!");
+		return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+	}
+
+	
+	
+	/**
+	 * Handles forgot password requests by initiating the password reset process.
+	 *
+	 * @param email The email address of the user requesting password reset.
+	 * @return ResponseEntity with status and message.
+	 */
+	@PostMapping("/forgot-password")
+	@Operation(summary = "Initiate password reset", description = "Sends a password reset link to the user's email.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Password reset link sent successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CommunicationResponse.class))),
+			@ApiResponse(responseCode = "500", description = "Internal server error", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
+	public ResponseEntity<ResponseDto> forgotPassword(@RequestParam("email") String email) {
+		try {
+			LOG.info("Received password reset request for email: {}", email);
+
+			// Initiate the password reset process
+			String emailApiResponse = passwordResetService.initiatePasswordReset(email);
+
+			// Create a response DTO with status, message, and data
+			CommunicationResponse<String> response = new CommunicationResponse<>("SUCCESS",
+					"Password reset link sent to your email.", emailApiResponse // You can include additional data if
+																				// needed
+			);
+
+			return ResponseEntity.ok(response);
+		} catch (Exception e) {
+			LOG.error("Exception occurred while processing password reset request for email: {}", email, e);
+
+			// Create an error response DTO with status code, message, and details
+			ErrorDetails errorDetails = new ErrorDetails(HttpStatus.INTERNAL_SERVER_ERROR.value(),
+					"Error occurred while processing the request", e.getMessage());
+
+			return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Resets the user's password using the provided token and new password.
+	 *
+	 * @param token       The password reset token.
+	 * @param newPassword The new password to set.
+	 * @return ResponseEntity with status and message.
+	 */
+	@PostMapping("/reset-password")
+	@Operation(summary = "Reset password", description = "Resets the user's password using the provided token.")
+	@ApiResponses(value = {
+			@ApiResponse(responseCode = "200", description = "Password reset successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = CommunicationResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Invalid or expired token", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
+	public ResponseEntity<ResponseDto> resetPassword(@RequestParam("token") String token,
+			@RequestParam("newPassword") String newPassword) {
+		try {
+			LOG.info("Password reset attempt with token: {}", token);
+
+			// Reset the password using the token and new password
+			passwordResetService.resetPassword(token, newPassword);
+
+			// Create a response DTO with status and message
+			CommunicationResponse<Void> response = new CommunicationResponse<>("SUCCESS",
+					"Password has been reset successfully.");
+
+			return ResponseEntity.ok(response);
+		} catch (Exception e) {
+			LOG.error("Exception occurred while resetting password with token: {}", token, e);
+
+			// Create an error response DTO with status code, message, and details
+			ErrorDetails errorDetails = new ErrorDetails(HttpStatus.BAD_REQUEST.value(), "Invalid or expired token",
+					e.getMessage());
+
+			return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+		}
+	}
+	
+
+	/**
+	 * Registers a new user.
+	 * 
+	 * @param signUpRequest The signup request containing user details
+	 * @return ResponseEntity with a success message or error details
+	 */
+	@PostMapping("/admin/signup")
+	@Operation(summary = "Register a new user", description = "Creates a new user account with the provided details.")
+	@ApiResponses(value = {
+	        @ApiResponse(responseCode = "200", description = "User registered successfully", content = @Content(mediaType = "application/json", schema = @Schema(implementation = MessageResponse.class))),
+	        @ApiResponse(responseCode = "400", description = "Bad request, invalid input", content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorDetails.class))) })
+	public ResponseEntity<ResponseDto> registerUserAdmin(@Valid @RequestBody SignupRequest signUpRequest) {
+	    LOG.info("Start Method: registerUser");
+
+	    // Check if username is already taken
+	    if (userRepository.existsByUsername(signUpRequest.getUsername())) {
+	        LOG.info("Method: registerUser - Error: Username is already taken!");
+	        return ResponseEntity.badRequest()
+	                .body(new MessageResponse("Error: Username is already taken! " + signUpRequest.getUsername()));
+	    }
+
+	    // Check if email is already in use
+	    if (userRepository.existsByEmail(signUpRequest.getEmail())) {
+	        LOG.info("Method: registerUser - Error: Email is already taken! " + signUpRequest.getEmail());
+	        return ResponseEntity.badRequest().body(new MessageResponse("Error: Email is already in use!"));
+	    }
+
+	    // Create new user's account
+	    User user = new User(signUpRequest.getUsername(), signUpRequest.getEmail(),
+	            encoder.encode(signUpRequest.getPassword()));
+
+	    Set<String> strRoles = signUpRequest.getRoles();
+	    Set<Role> roles = new HashSet<>();
+
+	    Role superAdminRole = roleRepository.findByName(ERole.ROLE_SUPERADMIN)
+                .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+        LOG.info("Adding SUPERADMIN role");
+        roles.add(superAdminRole);
+
+	    if (strRoles != null) {
+	        strRoles.forEach(role -> {
+	            switch (role.toLowerCase()) {  //Convert to lowercase for case-insensitive comparison        
+	            case "admin":
+	                Role adminRole = roleRepository.findByName(ERole.ROLE_ADMIN)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding ADMIN role");
+	                roles.add(adminRole);
+	                break;
+	            case "mod":
+	                Role modRole = roleRepository.findByName(ERole.ROLE_MODERATOR)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding MODERATOR role");
+	                roles.add(modRole);
+	                break;
+	            default:
+	                Role userRole = roleRepository.findByName(ERole.ROLE_USER)
+	                        .orElseThrow(() -> new RuntimeException(AppConstants.ROLE_NOTFOUND));
+	                LOG.info("Adding USER role for unrecognized role: " + role);
+	                roles.add(userRole);
+	            }
+	        });
+	    }
+
+	    user.setRoles(roles);
+	    userRepository.save(user);
+
+	    LOG.info("Method: registerUser - User registered successfully with roles: {}", 
+	             roles.stream().map(r -> r.getName().name()).collect(Collectors.joining(", ")));
+	    return ResponseEntity.ok(new MessageResponse("User registered successfully!"));
+	}
+	
+	@GetMapping("/roles")
+	public ResponseEntity<?> checkRoles() {
+	    List<Role> roles = roleRepository.findAll();
+	    return ResponseEntity.ok(roles.stream()
+	        .map(r -> r.getName().name())
+	        .collect(Collectors.toList()));
+	}
+}
+// File: src/main/java/com/in/auth/controller/OnboardingController.java
+
+package com.in.auth.controller;
+
+import com.in.auth.dto.CommunicationResponse;
+import com.in.auth.dto.ProcessingResult;  
+import com.in.auth.dto.ResponseDto;
+import com.in.auth.service.OnboardingService;
+import com.in.security.exception.InvalidFileFormatException;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+@RestController
+@RequestMapping("identitymanagement/api/excel")
+@Tag(name = "Onboarding Controller", description = "Excel file processing endpoints for user onboarding")
+@Slf4j
+public class OnboardingController {
+    
+    @Autowired
+    private OnboardingService onboardingService;
+
+    @PostMapping("/upload")
+    @Operation(summary = "Upload and process Excel file", 
+              description = "Process an Excel file containing organization and user details")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "File processed successfully"),
+        @ApiResponse(responseCode = "400", description = "Invalid request or file format"),
+        @ApiResponse(responseCode = "404", description = "File not found"),
+        @ApiResponse(responseCode = "500", description = "Internal server error")
+    })
+    public ResponseEntity<ResponseDto> uploadExcel(@RequestBody Map<String, String> request) {
+        log.info("Processing excel file upload request");
+        String filePath = request.get("filePath");
+        
+        if (filePath == null || filePath.isEmpty()) {
+            throw new InvalidFileFormatException("File path is required");
+        }
+
+        ProcessingResult result = onboardingService.processExcelFile(filePath);
+        return ResponseEntity.ok(new CommunicationResponse<>("SUCCESS", 
+            "Excel file processed successfully", result));
+    }
+}
+// File: src/main/java/com/in/auth/controller/OtpController.java
+
+package com.in.auth.controller;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.in.auth.dto.CommunicationResponse;
+import com.in.auth.dto.ErrorDetails;
+import com.in.auth.dto.ResponseDto;
+import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.service.OtpService;
+import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.service.UserDetailsServiceImpl;
+import com.in.security.jwt.JwtUtils;
+import com.in.security.models.User;
+
+import lombok.extern.slf4j.Slf4j;
+
+@RestController
+@RequestMapping("identitymanagement/api/otp")
+@Slf4j
+public class OtpController {	
+
+    @Autowired
+    private OtpService otpService;
+    
+    @Autowired
+    private JwtUtils jwtUtils;
+    
+    @Autowired
+    private UserDetailsServiceImpl userDetailsServiceImpl;
+
+    /**
+     * Send OTP via email.
+     *
+     * @param email The email address to send the OTP to.
+     * @return ResponseEntity with status and message.
+     */
+    @PostMapping("/send-email")
+    public ResponseEntity<ResponseDto> sendOtpByEmail(@RequestParam String email) {
+        try {
+            log.info("Sending OTP to email: {}", email);
+
+            // Send the OTP via email
+            String emailApiResponse = otpService.sendOtpByEmail(email);
+
+            // Create a response DTO with status, message, and data
+            CommunicationResponse<String> response = new CommunicationResponse<>(
+                "SUCCESS",
+                "OTP has been sent to your email.",
+                emailApiResponse // You can include additional data if needed
+            );
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Exception while sending OTP email to: {}", email, e);
+
+            // Create an error response DTO with status code, message, and details
+            ErrorDetails errorDetails = new ErrorDetails(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Failed to send OTP email",
+                e.getMessage()
+            );
+
+            return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Send OTP via SMS
+    @PostMapping("/send-sms")
+    public ResponseEntity<String> sendOtpBySms(@RequestParam String phoneNumber) {
+        otpService.sendOtpBySms(phoneNumber);
+        return ResponseEntity.ok("OTP has been sent to your phone.");
+    }
+
+    /**
+     * Validates the OTP provided by the user.
+     *
+     * @param identifier The identifier (email or phone number) associated with the OTP.
+     * @param otp        The OTP to validate.
+     * @return ResponseEntity with status and message.
+     */
+    @PostMapping("/validate")
+    public ResponseEntity<ResponseDto> validateOtp(@RequestParam String identifier, @RequestParam String otp) {
+        try {
+            log.info("Validating OTP for identifier: {}", identifier);
+
+            boolean isValid = otpService.validateOtp(identifier, otp);
+            if (isValid) {
+                                
+                User user = userDetailsServiceImpl.loadUserByEmail(identifier);
+                                
+                if(user == null  || user.getId() == null) {
+                	log.info("Method: validateOtp - Error: User not found for email! " + identifier);
+                     return ResponseEntity.badRequest()
+                         .body(new MessageResponse("Error: User not found for given email!"));
+                }
+                UserDetails userDetails = UserDetailsImpl.build(user);
+                List<String> roles = UserDetailsImpl.build(user).getAuthorities().stream()
+                        .map(item -> item.getAuthority())
+                        .collect(Collectors.toList());
+                	
+                
+                String jwtToken = jwtUtils.generateToken(userDetails);
+
+             // Create a response DTO with status and message
+                CommunicationResponse response = new CommunicationResponse<>(
+                    "SUCCESS",
+                    "OTP is valid.",
+                    jwtToken
+                );
+                
+                return ResponseEntity.ok(response);
+                
+            } else {
+                // Create an error response DTO
+                ErrorDetails errorDetails = new ErrorDetails(
+                    HttpStatus.BAD_REQUEST.value(),
+                    "Invalid or expired OTP.",
+                    "The OTP provided is invalid or has expired."
+                );
+
+                return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+            }
+        } catch (Exception e) {
+            log.error("Exception occurred while validating OTP for identifier: {}", identifier, e);
+
+            // Create an error response DTO
+            ErrorDetails errorDetails = new ErrorDetails(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "An error occurred while validating the OTP.",
+                e.getMessage()
+            );
+
+            return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+}
+// File: src/main/java/com/in/auth/controller/UserController.java
+
+package com.in.auth.controller;
+
+import java.util.List;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.in.auth.repository.RoleRepository;
+import com.in.auth.repository.UserRepository;
+import com.in.security.models.Role;
+import com.in.security.models.User;
+
+@RestController
+@RequestMapping("identitymanagement/api/user")
+public class UserController {
+	private static final Logger log = LoggerFactory.getLogger(UserController.class);
+	
+	@Autowired(required = true)
+	 private UserRepository userRepository;
+	
+	@Autowired(required = true)
+	private RoleRepository roleRepository;
+	
+	 @GetMapping("/{id}")
+	 // @PreAuthorize("hasRole('MODERATOR')")
+	  public Optional<User> getUserById(@PathVariable String id) {
+		 log.info("Start getUserById: {}");
+	    return userRepository.findById(id);
+	  }
+	 
+	 @GetMapping("/search")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public List<User> getAllUser() {
+		 log.info("Start getAllUser: {}");
+	    return userRepository.findAll();
+	  }
+	 
+	 @DeleteMapping("/{id}")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public String deleteUser(@PathVariable String id) {
+		 log.info("Start deleteUser: {}");
+	    userRepository.deleteById(id);
+	    log.info("Success deleteUser:");
+	    return "User Deletion Successful";
+	  }
+	 
+	 @GetMapping("/roles")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public List<Role> getAllRole() {
+		 log.info("Start getAllRole: {}");
+	    return roleRepository.findAll();
+	  }
+	 
+	 @DeleteMapping("/role/{id}")
+	 // @PreAuthorize("hasRole('ADMIN')")
+	  public String deleteRole(@PathVariable String id) {
+		 log.info("Start deleteRole: {}");
+		 roleRepository.deleteById(id);
+	    log.info("Success deleteRole:");
+	    return "Role Deletion Successful";
+	  }
+	 
+ 	@PutMapping("/{id}")
+    // @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<String> updateUser(@PathVariable String id, @RequestBody User updatedUser) {
+        log.info("Start updateUser: {}", id);
+        
+        return userRepository.findById(id).map(user -> {
+        	
+            user.setUsername(updatedUser.getUsername());
+            user.setEmail(updatedUser.getEmail());
+            user.setRoles(updatedUser.getRoles());
+            // Update any other relevant fields here
+            userRepository.save(user);
+            log.info("Success updateUser: {}", id);
+            return ResponseEntity.ok().body("Successfully updated");
+        }).orElseGet(() -> {
+            log.warn("User not found: {}", id);
+           return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found");
+            
+        });
+    }
+
+}
+
+// File: src/main/java/com/in/auth/controller/UserProfileController.java
+
+package com.in.auth.controller;
+
+
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.in.auth.dto.ErrorDetails;
+import com.in.auth.payload.response.MessageResponse;
+import com.in.auth.service.UserProfileService;
+import com.in.security.models.UserProfile;
+
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+/**
+ * REST Controller for User Profile Management.
+ * Handles HTTP requests related to User Profiles.
+ */
+@RestController
+@RequestMapping("identitymanagement/api/user-profile")
+
+public class UserProfileController {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserProfileController.class);
+    private final UserProfileService userProfileService;
+
+    /**
+     * Constructor-based dependency injection for UserProfileService.
+     * @param userProfileService the service handling user profile operations
+     */
+    public UserProfileController(UserProfileService userProfileService) {
+        this.userProfileService = userProfileService;
+    }
+
+    /**
+     * Creates a new User Profile.
+     * @param userProfile the user profile data
+     * @return the created user profile
+     */
+    @PostMapping
+    public ResponseEntity<UserProfile> createUserProfile(@RequestBody UserProfile userProfile) {
+        return ResponseEntity.ok(userProfileService.createUserProfile(userProfile));
+    }
+
+    /**
+     * Retrieves a list of all User Profiles.
+     * @return list of user profiles
+     */
+    @GetMapping
+    public ResponseEntity<List<UserProfile>> getAllUserProfiles() {
+        return ResponseEntity.ok(userProfileService.getAllUserProfiles());
+    }
+
+    /**
+     * Retrieves a User Profile by its ID.
+     * @param id the ID of the user profile
+     * @return the user profile with the specified ID
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<UserProfile> getUserProfileById(@PathVariable String id) {
+        return ResponseEntity.ok(userProfileService.getUserProfileById(id));
+    }
+
+    /**
+     * Updates an existing User Profile by ID.
+     * @param id the ID of the user profile to update
+     * @param userProfile the updated user profile data
+     * @return the updated user profile
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<UserProfile> updateUserProfile(@PathVariable String id, @RequestBody UserProfile userProfile) {
+        logger.info("User Profile update", id);
+        return ResponseEntity.ok(userProfileService.updateUserProfile(id,userProfile));
+    }
+
+    /**
+     * Deletes a User Profile by ID.
+     * @param id the ID of the user profile to delete
+     * @return response entity indicating the status of the operation
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUserProfile(@PathVariable String id) {
+        userProfileService.deleteUserProfile(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+// File: src/main/java/com/in/auth/dto/CommunicationResponse.java
+
+package com.in.auth.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
+
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class CommunicationResponse<T> implements ResponseDto {
+    private String status;
+    private String message;
+    private Object data;
+    
+    public CommunicationResponse(String status, String message) {
+        this.status = status;
+        this.message = message;
+    }
+    
+    public CommunicationResponse(String status, String message, Object data) {
+        this.status = status;
+        this.message = message;
+        this.data = data;
+    }
+}
+// File: src/main/java/com/in/auth/dto/ErrorDetails.java
+
+package com.in.auth.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public class ErrorDetails implements ResponseDto{
+    @Schema(description = "HTTP status code", example = "400")
+    private int statusCode;
+
+    @Schema(description = "Error message", example = "Invalid credentials")
+    private String message;
+
+    @Schema(description = "Detailed error description", example = "Username or password is incorrect")
+    private String details;
+
+    public ErrorDetails(int statusCode, String message, String details) {
+        this.statusCode = statusCode;
+        this.message = message;
+        this.details = details;
+    }
+
+    // Getters and setters
+    public int getStatusCode() {
+        return statusCode;
+    }
+
+    public void setStatusCode(int statusCode) {
+        this.statusCode = statusCode;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public String getDetails() {
+        return details;
+    }
+
+    public void setDetails(String details) {
+        this.details = details;
+    }
+}
+
+// File: src/main/java/com/in/auth/dto/OtpResponse.java
+
+
+package com.in.auth.dto;
+
+import lombok.Data;
+
+@Data
+public class OtpResponse {
+    private String email;
+    private String expiryTime;
+    
+    public OtpResponse(String email, String expiryTime) {
+        this.email = email;
+        this.expiryTime = expiryTime;
+    }
+}
+// File: src/main/java/com/in/auth/dto/PasswordResetResponse.java
+
+package com.in.auth.dto;
+
+import lombok.Data;
+
+@Data
+public class PasswordResetResponse {
+    private String email;
+    private String resetLink;
+    
+    public PasswordResetResponse(String email, String resetLink) {
+        this.email = email;
+        this.resetLink = resetLink;
+    }
+}
+
+// File: src/main/java/com/in/auth/dto/ProcessingResult.java
+
+package com.in.auth.dto;
+
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProcessingResult implements ResponseDto {
+    private int organizationsProcessed;
+    private int usersProcessed;
+}
+// File: src/main/java/com/in/auth/dto/ResponseDto.java
+
+package com.in.auth.dto;
+
+public interface ResponseDto {
+
+}
+
+// File: src/main/java/com/in/auth/payload/request/ErrorResponse.java
+
+package com.in.auth.payload.request;
+
+import lombok.Data;
+
+@Data
+public class ErrorResponse {
+	private String status;
+	private String msg;
+	
+	public ErrorResponse(String status, String msg){
+		this.status=status;
+		this.msg=msg;
+		
+	}
+}
+
+// File: src/main/java/com/in/auth/payload/request/LoginRequest.java
+
+package com.in.auth.payload.request;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+
+public class LoginRequest {
+  @NotBlank
+  @Schema(description = "User's username", example = "john_doe")
+  private String username;
+
+  @NotBlank
+  @Schema(description = "User's password", example = "securePassword123")
+  private String password;
+
+  public LoginRequest(String username, String password) {
+	  this.username=username;
+	  this.password=password;
+  }
+
+public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
+  public String getPassword() {
+    return password;
+  }
+
+  public void setPassword(String password) {
+    this.password = password;
+  }
+}
+
+// File: src/main/java/com/in/auth/payload/request/SignupRequest.java
+
+package com.in.auth.payload.request;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public class SignupRequest {
+  @NotBlank
+  @Size(min = 3, max = 20)
+  @Schema(description = "Desired username", example = "new_user")
+  private String username;
+
+  @NotBlank
+  @Size(max = 50)
+  @Email
+  @Schema(description = "User's email address", example = "new_user@example.com")
+  private String email;
+  
+  @Schema(description = "Roles to assign to the user", example = "[\"user\", \"admin\"]")
+  private Set<String> roles;
+
+  @NotBlank
+  @Size(min = 6, max = 40)
+  @Schema(description = "Desired password", example = "StrongPass!123")
+  private String password;
+
+  public SignupRequest(String username, String email, HashSet roles) {
+	this.username=username;
+	this.email=email;
+	this.roles=roles;
+}
+
+public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  public void setEmail(String email) {
+    this.email = email;
+  }
+
+  public String getPassword() {
+    return password;
+  }
+
+  public void setPassword(String password) {
+    this.password = password;
+  }
+
+  public Set<String> getRoles() {
+    return this.roles;
+  }
+
+  public void setRole(Set<String> roles) {
+    this.roles = roles;
+  }
+}
+
+// File: src/main/java/com/in/auth/payload/response/JwtResponse.java
+
+package com.in.auth.payload.response;
+
+import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.in.auth.dto.ResponseDto;
+import com.in.security.models.UserProfile;
+import com.in.security.models.Organization;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+
+public class JwtResponse implements ResponseDto {
+    @Schema(description = "JWT token", example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+    private String token;
+
+    @Schema(description = "Unique user identifier", example = "6123456789abcdef01234567")
+    private String id;
+
+    @Schema(description = "User's username", example = "john_doe")
+    private String username;
+
+    @Schema(description = "User's email address", example = "john_doe@example.com")
+    private String email;
+
+    @Schema(description = "List of roles assigned to the user", example = "[\"ROLE_USER\", \"ROLE_ADMIN\"]")
+    private List<String> roles;
+
+    @Schema(description = "User's profile details")
+    private UserProfile userProfile;
+
+    @Schema(description = "User's organization details")
+    private Organization organization;
+
+    public JwtResponse(String token, String id, String username, String email, List<String> roles, 
+                       UserProfile userProfile, Organization organization) {
+        this.token = token;
+        this.id = id;
+        this.username = username;
+        this.email = email;
+        this.roles = roles;
+        this.userProfile = userProfile;
+        this.organization = organization;
+    }
+
+    // Getters and setters for all fields
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public List<String> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(List<String> roles) {
+        this.roles = roles;
+    }
+
+    public UserProfile getUserProfile() {
+        return userProfile;
+    }
+
+    public void setUserProfile(UserProfile userProfile) {
+        this.userProfile = userProfile;
+    }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
+    }
+}
+
+// File: src/main/java/com/in/auth/payload/response/MessageResponse.java
+
+package com.in.auth.payload.response;
+
+import com.in.auth.dto.ResponseDto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public class MessageResponse implements ResponseDto{
+    @Schema(description = "Response message", example = "User registered successfully!")
+    private String message;
+
+  public MessageResponse(String message) {
+    this.message = message;
+  }
+
+  public String getMessage() {
+    return message;
+  }
+
+  public void setMessage(String message) {
+    this.message = message;
+  }
+}
+
+// File: src/main/java/com/in/auth/payload/response/UserInfoResponse.java
+
+package com.in.auth.payload.response;
+
+import java.util.List;
+
+import com.in.auth.dto.ResponseDto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public class UserInfoResponse implements ResponseDto{
+    @Schema(description = "Unique user identifier", example = "6123456789abcdef01234567")
+    private String id;
+
+    @Schema(description = "User's username", example = "john_doe")
+    private String username;
+
+    @Schema(description = "User's email address", example = "john_doe@example.com")
+    private String email;
+
+    @Schema(description = "List of roles assigned to the user", example = "[\"ROLE_USER\", \"ROLE_ADMIN\"]")
+    private List<String> roles;
+
+  public UserInfoResponse(String id, String username, String email, List<String> roles) {
+    this.id = id;
+    this.username = username;
+    this.email = email;
+    this.roles = roles;
+  }
+
+  public String getId() {
+    return id;
+  }
+
+  public void setId(String id) {
+    this.id = id;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  public void setEmail(String email) {
+    this.email = email;
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
+  public List<String> getRoles() {
+    return roles;
+  }
+}
+
+// File: src/main/java/com/in/auth/repository/OnboardedUserRepository.java
+
+package com.in.auth.repository;
+
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.User;
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+public interface OnboardedUserRepository extends MongoRepository<OnboardedUser, String> {
+    // Find a user by email
+    OnboardedUser findByEmail(String email);
+    
+    
+}
+// File: src/main/java/com/in/auth/repository/OrganizationRepository.java
+
+package com.in.auth.repository;
+
+
+import com.in.security.models.Organization;
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+public interface OrganizationRepository extends MongoRepository<Organization, String> {
+}
+// File: src/main/java/com/in/auth/repository/RoleRepository.java
+
+package com.in.auth.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.stereotype.Repository;
+
+import com.in.security.models.ERole;
+import com.in.security.models.Role;
+
+@Repository
+public interface RoleRepository extends MongoRepository<Role, String> {
+  Optional<Role> findByName(ERole name);
+}
+
+// File: src/main/java/com/in/auth/repository/UserProfileRepository.java
+
+package com.in.auth.repository;
+
+
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.stereotype.Repository;
+
+import com.in.security.models.User;
+import com.in.security.models.UserProfile;
+
+/**
+ * Repository interface for User Profile operations.
+ * Extends MongoRepository to provide CRUD operations.
+ */
+@Repository
+public interface UserProfileRepository extends MongoRepository<UserProfile, String> {
+    
+	//custom method for onboarding layer signin
+	UserProfile findByUserId(String userId);
+}
+
+
+// File: src/main/java/com/in/auth/repository/UserRepository.java
+
+package com.in.auth.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.stereotype.Repository;
+
+import com.in.security.models.User;
+
+@Repository
+public interface UserRepository extends MongoRepository<User, String> {
+  Optional<User> findByUsername(String username);
+
+  Boolean existsByUsername(String username);
+
+  Boolean existsByEmail(String email);
+  
+  // Find a user by their email address
+  User findByEmail(String email);
+
+  // Find a user by their password reset token
+  User findByResetToken(String resetToken);
+}
+
+// File: src/main/java/com/in/auth/service/CustomAuthenticationEntryPoint.java
+
+package com.in.auth.service;
+
+import java.io.IOException;
+import java.io.OutputStream;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.in.auth.payload.request.ErrorResponse;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+@Component("customAuthenticationEntryPoint")
+public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    @Override
+    public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) 
+      throws IOException, ServletException {
+
+    	ErrorResponse re = new ErrorResponse(HttpStatus.UNAUTHORIZED.toString(), "Authentication failed");
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        OutputStream responseStream = response.getOutputStream();
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.writeValue(responseStream, re);
+        responseStream.flush();
+    }
+}
+// File: src/main/java/com/in/auth/service/OnboardingService.java
+
+package com.in.auth.service;
+
+import com.in.auth.repository.OnboardedUserRepository;
+import com.in.auth.repository.OrganizationRepository;
+import com.in.auth.repository.RoleRepository;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.MongoClient;
+import com.in.security.exception.ExcelProcessingException;
+import com.in.security.exception.FileNotFoundException;
+import com.in.security.exception.InvalidFileFormatException;
+import com.in.security.models.ERole;
+import com.in.security.models.OnboardedUser;
+import com.in.security.models.Organization;
+import com.in.security.models.Role;
+import com.in.auth.dto.ProcessingResult;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.stereotype.Service;
+
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@Slf4j
+public class OnboardingService {
+    
+    private static final Logger log = LoggerFactory.getLogger(OnboardingService.class);
+    
+    @Autowired
+    private OrganizationRepository organizationRepository;
+    
+    @Autowired
+    private OnboardedUserRepository onboardedUserRepository;
+    
+    @Autowired
+    private RoleRepository roleRepository;
+    
+    @Autowired
+    private MongoClient mongoClient;
+    
+    @Autowired
+    private MongoTemplate mongoTemplate;
+
+    @Value("${identity.excel.allowed-extensions:xlsx}")
+    private List<String> allowedExtensions;
+
+    /**
+     * Process the Excel file and save organizations and users to the database.
+     * Uses MongoDB transactions to ensure atomicity.
+     */
+    public ProcessingResult processExcelFile(String filePath) {
+        log.info("Starting to process excel file: {}", filePath);
+        validateFile(filePath);
+        
+        try (FileInputStream fis = new FileInputStream(new File(filePath));
+             Workbook workbook = new XSSFWorkbook(fis)) {
+            
+            // Process all data first before any database operations
+            log.info("Processing organization sheet...");
+            List<Organization> organizations = processOrganizationSheet(workbook);
+            
+            log.info("Processing user sheet...");
+            List<OnboardedUser> users = processUserSheet(workbook, organizations);
+            
+            // Handle database operations in a transaction
+            return executeInTransaction(organizations, users);
+        } catch (IOException e) {
+            log.error("IO error while processing excel file", e);
+            throw new ExcelProcessingException("Failed to read excel file", e);
+        } catch (Exception e) {
+            log.error("Error processing excel file", e);
+            throw new ExcelProcessingException("Failed to process excel file: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Execute database operations within a MongoDB transaction
+     */
+    private ProcessingResult executeInTransaction(List<Organization> organizations, List<OnboardedUser> users) {
+        try (ClientSession session = mongoClient.startSession()) {
+            try {
+                // Start transaction
+                session.startTransaction();
+                
+                // Save organizations
+                List<Organization> savedOrgs = saveOrganizations(session, organizations);
+                log.info("Saved {} organizations", savedOrgs.size());
+                
+                // Update and save users
+                List<OnboardedUser> savedUsers = saveUsers(session, users, savedOrgs.get(0));
+                log.info("Saved {} users", savedUsers.size());
+                
+                // Commit transaction
+                session.commitTransaction();
+                
+                return new ProcessingResult(savedOrgs.size(), savedUsers.size());
+                
+            } catch (Exception e) {
+                log.error("Error during transaction, performing rollback", e);
+                session.abortTransaction();
+                throw new ExcelProcessingException("Failed to save data: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Save organizations within the transaction context
+     */
+    private List<Organization> saveOrganizations(ClientSession session, List<Organization> organizations) {
+        List<Organization> savedOrgs = new ArrayList<>();
+        for (Organization org : organizations) {
+            // Need to bind the save operation to the session
+            Organization savedOrg = mongoTemplate.withSession(session)
+                .execute(action -> organizationRepository.save(org));
+            savedOrgs.add(savedOrg);
+        }
+        return savedOrgs;
+    }
+
+    /**
+     * Save users within the transaction context
+     */
+    private List<OnboardedUser> saveUsers(ClientSession session, List<OnboardedUser> users, Organization organization) {
+        List<OnboardedUser> savedUsers = new ArrayList<>();
+        for (OnboardedUser user : users) {
+            user.setOrganization(organization);
+            // Need to bind the save operation to the session
+            OnboardedUser savedUser = mongoTemplate.withSession(session)
+                .execute(action -> onboardedUserRepository.save(user));
+            savedUsers.add(savedUser);
+        }
+        return savedUsers;
+    }
+
+    private void validateFile(String filePath) {
+        File file = new File(filePath);
+        
+        if (!file.exists()) {
+            throw new FileNotFoundException("File not found: " + filePath);
+        }
+        
+        if (!file.isFile()) {
+            throw new InvalidFileFormatException("Path is not a file: " + filePath);
+        }
+        
+        String extension = FilenameUtils.getExtension(filePath).toLowerCase();
+        if (!allowedExtensions.contains(extension)) {
+            throw new InvalidFileFormatException("Invalid file format. Allowed formats: " + 
+                String.join(", ", allowedExtensions));
+        }
+    }
+
+    /**
+     * Process the organization sheet from the workbook.
+     */
+    private List<Organization> processOrganizationSheet(Workbook workbook) {
+        Sheet sheet = workbook.getSheet("Organization_Details");
+        if (sheet == null) {
+            throw new ExcelProcessingException("Organization_Details sheet not found");
+        }
+
+        List<Organization> organizations = new ArrayList<>();
+        DataFormatter formatter = new DataFormatter();
+
+        for (Row row : sheet) {
+            if (row.getRowNum() == 0) continue; // Skip header
+
+            try {
+                Organization org = extractOrganization(row, formatter);
+                if (org != null) {
+                    organizations.add(org);
+                }
+            } catch (Exception e) {
+                log.error("Error processing organization row {}", row.getRowNum(), e);
+                throw new ExcelProcessingException("Error processing organization at row " + 
+                    (row.getRowNum() + 1), e);
+            }
+        }
+
+        if (organizations.isEmpty()) {
+            throw new ExcelProcessingException("No valid organizations found in the Excel file");
+        }
+
+        return organizations;
+    }
+
+    private Organization extractOrganization(Row row, DataFormatter formatter) {
+        String name = formatter.formatCellValue(row.getCell(0));
+        if (StringUtils.isBlank(name)) {
+            return null;
+        }
+
+        Organization org = new Organization();
+        org.setName(name);
+        org.setLocation(formatter.formatCellValue(row.getCell(1)));
+        
+        // Handle numeric cell value safely
+        Cell subscriptionCell = row.getCell(2);
+        if (subscriptionCell != null) {
+            if (subscriptionCell.getCellType() == CellType.NUMERIC) {
+                org.setSubscriptionsCount((int) subscriptionCell.getNumericCellValue());
+            } else {
+                org.setSubscriptionsCount(Integer.parseInt(formatter.formatCellValue(subscriptionCell)));
+            }
+        }
+
+        String modulesStr = formatter.formatCellValue(row.getCell(3));
+        if (StringUtils.isNotBlank(modulesStr)) {
+            org.setModules(Arrays.stream(modulesStr.split(","))
+                .map(String::trim)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.toList()));
+        }
+        
+        return org;
+    }
+
+    /**
+     * Process the user sheet from the workbook.
+     */
+    private List<OnboardedUser> processUserSheet(Workbook workbook, List<Organization> organizations) {
+        Sheet sheet = workbook.getSheet("User_Details");
+        if (sheet == null) {
+            throw new ExcelProcessingException("User_Details sheet not found");
+        }
+
+        List<OnboardedUser> users = new ArrayList<>();
+        DataFormatter formatter = new DataFormatter();
+
+        for (Row row : sheet) {
+            if (row.getRowNum() == 0) continue; // Skip header
+
+            try {
+                OnboardedUser user = extractUser(row, formatter, organizations);
+                if (user != null) {
+                    users.add(user);
+                }
+            } catch (Exception e) {
+                log.error("Error processing user row {}", row.getRowNum(), e);
+                throw new ExcelProcessingException("Error processing user at row " + 
+                    (row.getRowNum() + 1), e);
+            }
+        }
+
+        if (users.isEmpty()) {
+            throw new ExcelProcessingException("No valid users found in the Excel file");
+        }
+
+        return users;
+    }
+
+    private OnboardedUser extractUser(Row row, DataFormatter formatter, List<Organization> organizations) {
+        String email = formatter.formatCellValue(row.getCell(0));
+        if (StringUtils.isBlank(email)) {
+            return null;
+        }
+
+        OnboardedUser user = new OnboardedUser();
+        user.setEmail(email.trim());
+
+        // Process roles
+        String rolesStr = formatter.formatCellValue(row.getCell(1));
+        if (StringUtils.isBlank(rolesStr)) {
+            throw new ExcelProcessingException("Roles cannot be empty for user: " + email);
+        }
+
+        Set<Role> roles = Arrays.stream(rolesStr.split(","))
+            .map(String::trim)
+            .filter(StringUtils::isNotBlank)
+            .map(roleName -> {
+                try {
+                    return roleRepository.findByName(ERole.valueOf(roleName.toUpperCase()))
+                        .orElseThrow(() -> new ExcelProcessingException("Role not found: " + roleName));
+                } catch (IllegalArgumentException e) {
+                    throw new ExcelProcessingException("Invalid role name: " + roleName);
+                }
+            })
+            .collect(Collectors.toSet());
+
+        if (roles.isEmpty()) {
+            throw new ExcelProcessingException("No valid roles found for user: " + email);
+        }
+
+        user.setRoles(roles);
+        user.setStatus("Signup_Pending");
+
+        return user;
+    }
+}
+// File: src/main/java/com/in/auth/service/OtpService.java
+
+package com.in.auth.service;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.in.auth.repository.UserRepository;
+import com.in.security.models.User;
+import com.in.security.util.OtpUtil;
+
+@Service
+public class OtpService {
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    private static final int EXPIRATION_MINUTES = 15;
+    private static final String OTP_PREFIX = "otp_"; // Redis key prefix for OTPs
+
+    @Value("${email.api.base-url}")
+    private String emailApiBaseUrl;
+
+    @Autowired
+    private WebClient.Builder webClientBuilder;
+
+    /**
+     * Generate OTP and send it via email, storing in Redis with an expiration.
+     *
+     * @param email The email address to send the OTP to.
+     * @return The response from the email API.
+     */
+    public String sendOtpByEmail(String email) {
+
+        // Generate a random OTP
+        String otp = OtpUtil.generateOTP();
+
+        // Store OTP in Redis with expiration
+        redisTemplate.opsForValue().set(OTP_PREFIX + email, otp, EXPIRATION_MINUTES, TimeUnit.MINUTES);
+
+        // Get user by email to retrieve the username
+        User user = userRepository.findByEmail(email);
+        String username = (user != null) ? user.getUsername() : "";
+
+        // Prepare request body for email API
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("email", email);
+        requestBody.put("otp", otp);
+        requestBody.put("action", "2FA");
+        requestBody.put("year", String.valueOf(LocalDateTime.now().getYear()));
+        requestBody.put("username", username);
+        requestBody.put("expiryTime", String.valueOf(EXPIRATION_MINUTES));
+
+        // Make HTTP call to email API using WebClient
+        WebClient webClient = webClientBuilder.baseUrl(emailApiBaseUrl).build();
+
+        String response = webClient.post()
+                .uri("/otp")
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+        return response;
+    }
+
+    // Optional: Send OTP via SMS using Twilio or any other SMS service
+    public void sendOtpBySms(String phoneNumber) {
+        String otp = OtpUtil.generateOTP();
+        redisTemplate.opsForValue().set(OTP_PREFIX + phoneNumber, otp, EXPIRATION_MINUTES, TimeUnit.MINUTES);
+
+        // Send OTP via Twilio (or any other SMS provider)
+        // Twilio or another service can be used to send OTP via SMS.
+    }
+
+    // Validate OTP
+    public boolean validateOtp(String identifier, String otp) {
+        String storedOtp = redisTemplate.opsForValue().get(OTP_PREFIX + identifier);
+        return storedOtp != null && storedOtp.equals(otp);
+    }
+}
+
+// File: src/main/java/com/in/auth/service/PasswordResetService.java
+
+package com.in.auth.service;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.in.auth.repository.UserRepository;
+import com.in.security.models.User;
+
+@Service
+public class PasswordResetService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Value("${email.api.base-url}")
+    private String emailApiBaseUrl;
+    
+    @Value("${email.api.password-reset-url}")
+    private String passwordResetUrl="http://139.59.40.176:8091/signin/reset-password";
+
+    @Autowired
+    private WebClient.Builder webClientBuilder;
+
+    /**
+     * Initiates the password reset process by sending a reset link via email.
+     *
+     * @param email The email address of the user requesting password reset.
+     * @return The response from the email API.
+     * @throws Exception If the user is not found.
+     */
+    public String initiatePasswordReset(String email) throws Exception {
+        // Verify if the email exists in the database
+        User user = userRepository.findByEmail(email);
+        if (user == null) {
+            throw new Exception("User with this email not found");
+        }
+
+        // Generate a password reset token
+        String resetToken = UUID.randomUUID().toString();
+
+        // Save the reset token and its expiration to the user's record
+        user.setResetToken(resetToken);
+        user.setTokenExpiration(LocalDateTime.now().plusHours(1)); // Token valid for 1 hour
+        userRepository.save(user);
+
+        // Construct the password reset URL
+        String resetUrl = passwordResetUrl+"?token=" + resetToken;
+
+        // Prepare request body for email API
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("email", email);
+        requestBody.put("resetLink", resetUrl);
+        requestBody.put("currentYear", String.valueOf(LocalDateTime.now().getYear()));
+        requestBody.put("username", user.getUsername());
+        requestBody.put("validityTime", "60"); // 60 minutes validity time
+
+        // Make HTTP call to email API using WebClient
+        WebClient webClient = webClientBuilder.baseUrl(emailApiBaseUrl).build();
+
+        String response = webClient.post()
+                .uri("/forgot-password/link")
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+        return response;
+    }
+    public void resetPassword(String token, String newPassword) throws Exception {
+        // Find the user with the given reset token
+        User user = userRepository.findByResetToken(token);
+        if (user == null || user.getTokenExpiration().isBefore(LocalDateTime.now())) {
+            throw new Exception("Invalid or expired token");
+        }
+
+        // Update the user's password
+        user.setPassword(new BCryptPasswordEncoder().encode(newPassword));
+        user.setResetToken(null); // Clear the token after a successful reset
+        user.setTokenExpiration(null);
+        userRepository.save(user);
+    }
+
+}
+
+// File: src/main/java/com/in/auth/service/RoleInitializerService.java
+
+package com.in.auth.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.in.security.models.ERole;
+import com.in.security.models.Role;
+import com.in.auth.repository.RoleRepository;
+
+import jakarta.annotation.PostConstruct;
+
+@Service
+public class RoleInitializerService {
+
+    @Autowired
+    private RoleRepository roleRepository;
+
+    @PostConstruct
+    public void init() {
+        if (roleRepository.count() == 0) {
+            // Add admin role if no roles exist as default
+            Role adminRole = new Role(ERole.ROLE_ADMIN);
+            roleRepository.save(adminRole);
+        }
+    }
+}
+// File: src/main/java/com/in/auth/service/UserDetailsImpl.java
+
+package com.in.auth.service;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.in.security.models.User;
+
+
+public class UserDetailsImpl implements UserDetails {
+  private static final long serialVersionUID = 1L;
+
+  private String id;
+
+  private String username;
+
+  private String email;
+
+  @JsonIgnore
+  private String password;
+
+  private Collection<? extends GrantedAuthority> authorities;
+
+  public UserDetailsImpl(String id, String username, String email, String password,
+      Collection<? extends GrantedAuthority> authorities) {
+    this.id = id;
+    this.username = username;
+    this.email = email;
+    this.password = password;
+    this.authorities = authorities;
+  }
+
+  public static UserDetailsImpl build(User user) {
+    List<GrantedAuthority> authorities = user.getRoles().stream()
+        .map(role -> new SimpleGrantedAuthority(role.getName().name()))
+        .collect(Collectors.toList());
+
+    return new UserDetailsImpl(
+        user.getId(), 
+        user.getUsername(), 
+        user.getEmail(),
+        user.getPassword(), 
+        authorities);
+  }
+
+  @Override
+  public Collection<? extends GrantedAuthority> getAuthorities() {
+    return authorities;
+  }
+
+  public String getId() {
+    return id;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  @Override
+  public String getPassword() {
+    return password;
+  }
+
+  @Override
+  public String getUsername() {
+    return username;
+  }
+
+  @Override
+  public boolean isAccountNonExpired() {
+    return true;
+  }
+
+  @Override
+  public boolean isAccountNonLocked() {
+    return true;
+  }
+
+  @Override
+  public boolean isCredentialsNonExpired() {
+    return true;
+  }
+
+  @Override
+  public boolean isEnabled() {
+    return true;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o)
+      return true;
+    if (o == null || getClass() != o.getClass())
+      return false;
+    UserDetailsImpl user = (UserDetailsImpl) o;
+    return Objects.equals(id, user.id);
+  }
+}
+
+// File: src/main/java/com/in/auth/service/UserDetailsServiceImpl.java
+
+package com.in.auth.service;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.in.auth.repository.UserRepository;
+import com.in.security.config.SecurityProperties;
+import com.in.security.models.User;
+
+@Service
+public class UserDetailsServiceImpl implements UserDetailsService {
+	
+  @Autowired
+  private UserRepository userRepository;
+  
+  
+  
+  @Autowired
+  private SecurityProperties securityProperties;
+
+
+  /**
+   * 
+   */
+  @Override
+  @Transactional
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+      if (username == null) {
+          throw new UsernameNotFoundException("User Not Found with username: null");
+      }
+      
+      User user = userRepository.findByUsername(username)
+          .orElseThrow(() -> new UsernameNotFoundException("User Not Found with username: " + username));
+
+      return UserDetailsImpl.build(user);
+  }
+  
+  /**
+   * 
+   * @param email
+   * @return
+   * @throws UsernameNotFoundException
+   */
+  @Transactional
+  public User loadUserByEmail(String email) throws UsernameNotFoundException {
+      if (email == null) {
+          throw new UsernameNotFoundException("User Not Found with email: null");
+      }
+      
+      User user = userRepository.findByEmail(email);
+
+      return user;
+  }
+  
+  public boolean skip2FA(UserDetails userDetails) {
+
+	    // Extract authorities from userDetails and check for intersection with allowAccess
+	    return userDetails.getAuthorities().stream()
+	            .map(item -> item.getAuthority())
+	            .anyMatch(securityProperties.getAllowedRoles()::contains);
+	}
+
+}
+
+// File: src/main/java/com/in/auth/service/UserProfileService.java
+
+package com.in.auth.service;
+
+
+
+import java.util.List;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import com.in.auth.controller.AuthController;
+import com.in.auth.repository.UserProfileRepository;
+import com.in.security.models.UserProfile;
+
+/**
+ * Service class for User Profile Management.
+ * Contains business logic for handling user profiles.
+ */
+@Service
+public class UserProfileService {
+	
+	private static final Logger logger = LoggerFactory.getLogger(UserProfileService.class);
+
+    private final UserProfileRepository userProfileRepository;
+
+    /**
+     * Constructor-based dependency injection for UserProfileRepository.
+     * @param userProfileRepository the repository handling database operations
+     */
+    public UserProfileService(UserProfileRepository userProfileRepository) {
+        this.userProfileRepository = userProfileRepository;
+    }
+
+    /**
+     * Creates a new User Profile.
+     * @param userProfile the user profile data
+     * @return the created user profile
+     */
+    public UserProfile createUserProfile(UserProfile userProfile) {
+        return userProfileRepository.save(userProfile);
+    }
+
+    /**
+     * Retrieves all User Profiles from the database.
+     * @return list of user profiles
+     */
+    public List<UserProfile> getAllUserProfiles() {
+        return userProfileRepository.findAll();
+    }
+
+    /**
+     * Retrieves a User Profile by its ID.
+     * @param id the ID of the user profile
+     * @return the user profile with the specified ID, or null if not found
+     */
+    public UserProfile getUserProfileById(String id) {
+        Optional<UserProfile> userProfile = userProfileRepository.findById(id);
+        return userProfile.orElse(null);
+    }
+
+    /**
+     * Updates an existing User Profile.
+     * @param id the ID of the user profile to update
+     * @param updatedUserProfile the updated user profile data
+     * @return the updated user profile, or null if not found
+     */
+    public UserProfile updateUserProfile(String id, UserProfile updatedUserProfile) {
+        // Check if the user profile with the given ID exists
+        if (userProfileRepository.existsById(id)) {
+            logger.info("ID EXISTS!!!!!!!!!!!Updating user profile with ID: {}", id);
+            // Retrieve the existing user profile from the database
+            UserProfile existingUserProfile = userProfileRepository.findById(id).get();
+           // Update the fields of the existing user profile only if the new values are not null
+            if (updatedUserProfile.getFirstName() != null) {
+                existingUserProfile.setFirstName(updatedUserProfile.getFirstName());
+            }
+            if (updatedUserProfile.getLastName() != null) {
+                existingUserProfile.setLastName(updatedUserProfile.getLastName());
+            }
+            /*if (updatedUserProfile.getEmail() != null) {
+                existingUserProfile.setEmail(updatedUserProfile.getEmail());
+            }*/
+            if (updatedUserProfile.getPhoneNumber() != null) {
+                existingUserProfile.setPhoneNumber(updatedUserProfile.getPhoneNumber());
+            }
+            if (updatedUserProfile.getAddress() != null) {
+                existingUserProfile.setAddress(updatedUserProfile.getAddress());
+            }
+            if (updatedUserProfile.getInterests() != null) {
+                existingUserProfile.setInterests(updatedUserProfile.getInterests());
+            }
+            if (updatedUserProfile.getProfilePicture() != null) {
+                existingUserProfile.setProfilePicture(updatedUserProfile.getProfilePicture());
+            }    
+            // Save the updated user profile
+            return userProfileRepository.save(existingUserProfile);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Deletes a User Profile by its ID.
+     * @param id the ID of the user profile to delete
+     */
+    public void deleteUserProfile(String id) {
+        userProfileRepository.deleteById(id);
+    }
+}
+
+
+// File: src/main/java/com/in/IdentitySecurityManagement.java
+
+package com.in;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
+
+import com.in.security.models.ERole;
+import com.in.security.models.Role;
+import com.in.auth.repository.RoleRepository;
+
+import jakarta.annotation.PostConstruct;
+
+@SpringBootApplication
+@EnableDiscoveryClient
+//@EnableMongoRepositories("com.in.compliance.repository")
+//@ComponentScan(basePackages = "com.in.compliance") 
+public class IdentitySecurityManagement {
+
+	private static final Logger LOG = LoggerFactory.getLogger(IdentitySecurityManagement.class);
+	
+	@Autowired(required = true)
+	RoleRepository roleRepo;
+	
+	public static void main(String[] args) {
+		SpringApplication.run(IdentitySecurityManagement	.class, args);
+	}
+	
+	@PostConstruct
+	public void seeder() {
+	    List<Role> adminRole = roleRepo.findAll();
+
+	    if (!adminRole.isEmpty()) {
+	        LOG.info("Identity Management App started - Roles " + adminRole.size());
+	    } else {
+	        List<Role> roles = new ArrayList<>();
+	        
+	        Role roleSuperAdmin = new Role();
+	        roleSuperAdmin.setName(ERole.ROLE_SUPERADMIN);
+	        roles.add(roleSuperAdmin);
+	        
+	        Role roleAdmin = new Role();
+	        roleAdmin.setName(ERole.ROLE_ADMIN);
+	        roles.add(roleAdmin);
+	        
+	        Role roleMod = new Role();
+	        roleMod.setName(ERole.ROLE_MODERATOR);
+	        roles.add(roleMod);
+
+	        Role roleUser = new Role();
+	        roleUser.setName(ERole.ROLE_USER);
+	        roles.add(roleUser);
+	        
+	        roleRepo.saveAll(roles);
+	        
+	        LOG.info("Initial roles created successfully");
+	    }
+	}
+
+}
+
+// File: src/main/java/com/in/security/config/SecurityProperties.java
+
+package com.in.security.config;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+import java.util.ArrayList;
+import java.util.List;
+
+@Configuration
+@ConfigurationProperties(prefix = "identity.disable2fa")
+@Data
+public class SecurityProperties {
+    private List<String> allowedRoles = new ArrayList<>();
+}
+// File: src/main/java/com/in/security/config/SwaggerConfig.java
+
+// File: src/main/java/com/in/security/config/SwaggerConfig.java
+
+package com.in.security.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+
+
+@Configuration
+public class SwaggerConfig {
+    @Bean
+    public OpenAPI customOpenAPI() {
+        final String securitySchemeName = "bearerAuth";
+        return new OpenAPI()
+            .info(new Info()
+                .title("Identity Security Management API")
+                .version("1.0")
+                .description("API documentation for the Identity Security Management application."))
+            .addSecurityItem(new SecurityRequirement().addList(securitySchemeName))
+            .components(new Components()
+                .addSecuritySchemes(securitySchemeName, new SecurityScheme()
+                    .name(securitySchemeName)
+                    .type(SecurityScheme.Type.HTTP)
+                    .scheme("bearer")
+                    .bearerFormat("JWT")));
+    }
+}
+
+// File: src/main/java/com/in/security/config/WebClientConfig.java
+
+// WebClientConfig.java
+package com.in.security.config;
+
+import io.netty.channel.ChannelOption;
+import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.handler.timeout.WriteTimeoutHandler;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
+
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+
+@Configuration
+@Slf4j
+public class WebClientConfig {
+
+
+  
+    @Bean
+    public WebClient webClient() {
+        // Configure HTTP client with timeouts
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .responseTimeout(Duration.ofSeconds(5))
+                .doOnConnected(conn -> conn
+                        .addHandlerLast(new ReadTimeoutHandler(5, TimeUnit.SECONDS))
+                        .addHandlerLast(new WriteTimeoutHandler(5, TimeUnit.SECONDS)));
+
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .defaultHeader("Content-Type", "application/json")
+                .filter(logRequest())
+                .filter(logResponse())
+                .build();
+    }
+
+
+    private ExchangeFilterFunction logRequest() {
+        return ExchangeFilterFunction.ofRequestProcessor(clientRequest -> {
+            if (log.isDebugEnabled()) {
+                log.debug("Request: {} {}", clientRequest.method(), clientRequest.url());
+                clientRequest.headers().forEach((name, values) -> 
+                    values.forEach(value -> log.debug("{}={}", name, maskSensitiveData(name, value))));
+            }
+            return Mono.just(clientRequest);
+        });
+    }
+
+    private ExchangeFilterFunction logResponse() {
+        return ExchangeFilterFunction.ofResponseProcessor(clientResponse -> {
+            if (log.isDebugEnabled()) {
+                log.debug("Response Status: {}", clientResponse.statusCode());
+            }
+            return Mono.just(clientResponse);
+        });
+    }
+
+    private String maskSensitiveData(String headerName, String value) {
+        if (headerName.toLowerCase().contains("authorization")) {
+            return "Bearer ****";
+        }
+        return value;
+    }
+}
+// File: src/main/java/com/in/security/config/WebSecurityConfig.java
+
+package com.in.security.config;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.in.auth.service.UserDetailsServiceImpl;
+import com.in.security.jwt.AuthEntryPointJwt;
+import com.in.security.jwt.AuthTokenFilter;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+public class WebSecurityConfig {
+    @Autowired
+    UserDetailsServiceImpl userDetailsService;
+
+    @Autowired
+    private AuthEntryPointJwt unauthorizedHandler;
+
+    @Bean
+    public AuthTokenFilter authenticationJwtTokenFilter() {
+        return new AuthTokenFilter();
+    }
+
+    @Bean
+    public DaoAuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        authProvider.setUserDetailsService(userDetailsService);
+        authProvider.setPasswordEncoder(passwordEncoder());
+        return authProvider;
+    }
+
+    
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
+        return authConfig.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            // Disable CSRF as we're using JWT
+            .csrf(csrf -> csrf.disable())
+            // Use the custom CORS configuration
+            //.cors(cors -> cors.configurationSource(corsConfig.corsConfigurationSource()))
+            // Set up exception handling
+            .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
+            // Use stateless session management
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // Configure authorization rules
+            .authorizeHttpRequests(auth -> 
+                auth.requestMatchers("/identitymanagement/api/auth/**").permitAll()
+                	.requestMatchers("/identitymanagement/api/otp/**").permitAll()
+                    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .requestMatchers("/identitymanagement/actuator/**").permitAll()
+                    .requestMatchers("/identitymanagement/swagger-ui/**").permitAll()
+                    .anyRequest().authenticated()
+            );
+
+        // Add the JWT token filter
+        http.authenticationProvider(authenticationProvider());
+        http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}
+// File: src/main/java/com/in/security/exception/ExcelProcessingException.java
+
+package com.in.security.exception;
+
+public class ExcelProcessingException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public ExcelProcessingException(String message) {
+        super(message);
+    }
+
+    public ExcelProcessingException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+// File: src/main/java/com/in/security/exception/FileNotFoundException.java
+
+package com.in.security.exception;
+
+public class FileNotFoundException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public FileNotFoundException(String message) {
+        super(message);
+    }
+}
+
+// File: src/main/java/com/in/security/exception/GlobalExceptionHandler.java
+
+package com.in.security.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.WebRequest;
+
+import com.in.auth.dto.ErrorDetails;
+
+import lombok.extern.slf4j.Slf4j;
+
+@ControllerAdvice
+@Slf4j
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(JwtTokenException.class)
+    public ResponseEntity<String> handleJwtTokenExpiredException(JwtTokenException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorDetails> handleBadCredentialsException(BadCredentialsException ex, WebRequest request) {
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.UNAUTHORIZED.value(), 
+            "Invalid credentials", 
+            request.getDescription(false)
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.UNAUTHORIZED);
+    }
+
+    // Handle global exceptions
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<?> handleGlobalException(Exception ex, WebRequest request) {
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(), 
+            ex.getMessage(),
+            request.getDescription(false)
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+    
+    @ExceptionHandler(ExcelProcessingException.class)
+    public ResponseEntity<ErrorDetails> handleExcelProcessingException(ExcelProcessingException ex, WebRequest request) {
+        log.error("Excel processing error", ex);
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.INTERNAL_SERVER_ERROR.value(),
+            "Failed to process Excel file",
+            ex.getMessage()
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(FileNotFoundException.class)
+    public ResponseEntity<ErrorDetails> handleFileNotFoundException(FileNotFoundException ex, WebRequest request) {
+        log.error("File not found", ex);
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.NOT_FOUND.value(),
+            "File not found",
+            ex.getMessage()
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(InvalidFileFormatException.class)
+    public ResponseEntity<ErrorDetails> handleInvalidFileFormatException(InvalidFileFormatException ex, WebRequest request) {
+        log.error("Invalid file format", ex);
+        ErrorDetails errorDetails = new ErrorDetails(
+            HttpStatus.BAD_REQUEST.value(),
+            "Invalid file format",
+            ex.getMessage()
+        );
+        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+    }
+}
+// File: src/main/java/com/in/security/exception/InvalidFileFormatException.java
+
+package com.in.security.exception;
+
+public class InvalidFileFormatException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    public InvalidFileFormatException(String message) {
+        super(message);
+    }
+}
+// File: src/main/java/com/in/security/exception/InvalidUidException.java
+
+package com.in.security.exception;
+
+public class InvalidUidException extends Exception {
+
+    public InvalidUidException(String msg) {
+        super(msg);
+    }
+}
+
+// File: src/main/java/com/in/security/exception/JwtTokenException.java
+
+package com.in.security.exception;
+
+public class JwtTokenException extends RuntimeException {
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+
+	public JwtTokenException(String message) {
+        super(message);
+    }
+
+}
+
+// File: src/main/java/com/in/security/exception/NotFoundExceptions.java
+
+package com.in.security.exception;
+
+public class NotFoundExceptions extends Exception {
+
+    public NotFoundExceptions(String message) {
+        super(message);
+    }
+}
+
+// File: src/main/java/com/in/security/exception/UnauthorisedRoleExceptions.java
+
+package com.in.security.exception;
+
+public class UnauthorisedRoleExceptions extends Exception {
+    public UnauthorisedRoleExceptions(String message) {
+        super(message);
+    }
+}
+// File: src/main/java/com/in/security/exception/UnauthorisedSignInException.java
+
+package com.in.security.exception;
+
+public class UnauthorisedSignInException extends Exception {
+    public UnauthorisedSignInException(String message) {
+        super(message);
+    }
+}
+
+// File: src/main/java/com/in/security/jwt/AuthEntryPointJwt.java
+
+package com.in.security.jwt;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+@Component
+public class AuthEntryPointJwt implements AuthenticationEntryPoint {
+
+  private static final Logger logger = LoggerFactory.getLogger(AuthEntryPointJwt.class);
+
+  @Override
+  public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
+      throws IOException, ServletException {
+    logger.error("Unauthorized error: {}", authException.getMessage());
+
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+
+    final Map<String, Object> body = new HashMap<>();
+    body.put("status", HttpServletResponse.SC_UNAUTHORIZED);
+    body.put("error", "Unauthorized");
+    body.put("message", authException.getMessage());
+    body.put("path", request.getServletPath());
+
+    final ObjectMapper mapper = new ObjectMapper();
+    mapper.writeValue(response.getOutputStream(), body);
+  }
+
+}
+
+// File: src/main/java/com/in/security/jwt/AuthTokenFilter.java
+
+package com.in.security.jwt;
+
+import java.io.IOException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.in.auth.service.*;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+
+@Component
+public class AuthTokenFilter extends OncePerRequestFilter {
+  @Autowired
+  private JwtUtils jwtUtils;
+
+  @Autowired
+  private UserDetailsServiceImpl userDetailsService;
+
+  private static final Logger logger = LoggerFactory.getLogger(AuthTokenFilter.class);
+
+  @Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+    try {
+      String jwt = parseJwt(request);
+           
+      if (jwt != null && jwtUtils.validateJwtToken(jwt)) {
+        String username = jwtUtils.getUserNameFromJwtToken(jwt);
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(userDetails, null,
+            userDetails.getAuthorities());
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+      }
+      
+		
+		/*
+		 * } catch (JwtTokenException exp) { throw exp; throw new
+		 * AuthenticationException(exp.getMessage())
+		 */
+    } catch (Exception e) {
+      logger.error("Cannot set user authentication: {}", e);
+      request.setAttribute("JWT_MSG", e.getMessage());
+    }
+
+    filterChain.doFilter(request, response);
+  }
+
+  private String parseJwtFromCookies(HttpServletRequest request) {
+    String jwt = jwtUtils.getJwtFromCookies(request);
+    return jwt;
+  }
+  
+  private String parseJwt(HttpServletRequest request) {
+	  String jwt =request.getHeader("Authorization");
+	  if(jwt != null && jwt.startsWith("Bearer ")) {
+		  jwt=jwt.substring(7);
+	  }
+	    return jwt;
+	  }
+}
+
+// File: src/main/java/com/in/security/jwt/JwtUtils.java
+
+package com.in.security.jwt;
+
+import java.security.Key;
+import java.util.Date;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseCookie;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+import org.springframework.web.util.WebUtils;
+
+import com.in.auth.service.UserDetailsImpl;
+
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+
+@Component
+public class JwtUtils {
+	private static final Logger LOG = LoggerFactory.getLogger(JwtUtils.class);
+
+	@Value("${security.app.jwtSecret}")
+	private String jwtSecret;
+
+	@Value("${security.app.jwtExpirationMs}")
+	private long jwtExpirationMs;
+
+	@Value("${security.app.jwtCookieName}")
+	private String jwtCookie;
+
+	public String getJwtFromCookies(HttpServletRequest request) {
+		Cookie cookie = WebUtils.getCookie(request, jwtCookie);
+		if (cookie != null) {
+			return cookie.getValue();
+		} else {
+			return null;
+		}
+	}
+
+	public ResponseCookie generateJwtCookie(UserDetailsImpl userPrincipal) {
+		String jwt = generateTokenFromUsername(userPrincipal.getUsername());
+		return ResponseCookie.from(jwtCookie, jwt).path("/api").maxAge(jwtExpirationMs).httpOnly(true).build();
+
+	}
+
+	public String generateToken(UserDetailsImpl userPrincipal) {
+		return generateTokenFromUsername(userPrincipal.getUsername());
+	}
+
+	public String generateToken(UserDetails userDetails) {
+		return generateTokenFromUsername(userDetails.getUsername());
+	}
+
+	public ResponseCookie getCleanJwtCookie() {
+		ResponseCookie cookie = ResponseCookie.from(jwtCookie, null).path("/api").build();
+		return cookie;
+	}
+
+	public String getUserNameFromJwtToken(String token) {
+		return Jwts.parserBuilder().setSigningKey(key()).build().parseClaimsJws(token).getBody().getSubject();
+	}
+
+	private Key key() {
+		return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+	}
+
+	public boolean validateJwtToken(String authToken) {
+		LOG.info("Start Method:validateJwtToken");
+		try {
+			Jwts.parserBuilder().setSigningKey(key()).build().parse(authToken);
+			return true;
+		} catch (MalformedJwtException e) {
+			LOG.error("Invalid JWT token: {}", e.getMessage());
+			// throw new JwtTokenException("Invalid JWT token:"+e.getMessage());
+		} catch (ExpiredJwtException e) {
+			LOG.error("JWT token is expired: {}", e.getMessage());
+			// throw new JwtTokenException("JWT token is expired: "+e.getMessage());
+		} catch (UnsupportedJwtException e) {
+			LOG.error("JWT token is unsupported: {}", e.getMessage());
+			// throw new JwtTokenException("JWT token is unsupported:"+e.getMessage());
+		} catch (IllegalArgumentException e) {
+			LOG.error("JWT claims string is empty: {}", e.getMessage());
+			// throw new JwtTokenException("JWT claims string is empty:"+e.getMessage());
+		}
+
+		return false;
+	}
+
+	public String generateTokenFromUsername(String username) {
+		LOG.info("Start Method:generateTokenFromUsername");
+		return Jwts.builder().setSubject(username).setIssuedAt(new Date())
+				.setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
+				.signWith(key(), SignatureAlgorithm.HS256).compact();
+	}
+}
+
+// File: src/main/java/com/in/security/models/ERole.java
+
+package com.in.security.models;
+
+public enum ERole {
+  ROLE_USER,
+  ROLE_MODERATOR,
+  ROLE_ADMIN,
+  ROLE_SUPERADMIN,
+  ROLE_APPROVER 
+}
+
+// File: src/main/java/com/in/security/models/OnboardedUser.java
+
+package com.in.security.models;
+
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.DBRef;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+@Document(collection = "onboarded_users")
+public class OnboardedUser {
+    @Id
+    private String id;
+    
+    @NotBlank
+    @Size(max = 50)
+    @Email
+    private String email;
+    
+    @DBRef
+    private Set<Role> roles = new HashSet<>();
+    
+    @DBRef
+    private Organization organization = new Organization();
+    
+    @NotBlank
+    private String status;
+
+    
+    public String getStatus() {
+        return status;
+    }
+    public void setStatus(String status) {
+        this.status = status;
+    }
+    // Getters and Setters
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+
+    public Set<Role> getRoles() {
+        return roles;
+      }
+
+      public void setRoles(Set<Role> roles) {
+        this.roles = roles;
+      }
+      public Organization getOrganization() {
+          return organization;
+      }
+      public void setOrganization(Organization organization) {
+          this.organization = organization;
+      }
+}
+
+// File: src/main/java/com/in/security/models/Organization.java
+
+package com.in.security.models;
+
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import lombok.Data;
+
+import java.util.List;
+
+@Document(collection = "Organization")
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class Organization {
+    @Id
+    private String id;
+    private String name;
+    private String location;
+    private int subscriptionsCount;
+    private List<String> modules;
+
+  
+}
+
+// File: src/main/java/com/in/security/models/Role.java
+
+package com.in.security.models;
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+@Document(collection = "roles")
+public class Role {
+  @Id
+  private String id;
+
+  private ERole name;
+
+  public Role() {
+
+  }
+
+  public Role(ERole name) {
+    this.name = name;
+  }
+
+  public String getId() {
+    return id;
+  }
+
+  public void setId(String id) {
+    this.id = id;
+  }
+
+  public ERole getName() {
+    return name;
+  }
+
+  public void setName(ERole name) {
+    this.name = name;
+  }
+}
+
+// File: src/main/java/com/in/security/models/User.java
+
+package com.in.security.models;
+
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.DBRef;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Document(collection = "users")
+@Data
+public class User {
+  @Id
+  private String id;
+
+  @NotBlank
+  @Size(max = 20)
+  private String username;
+
+  @NotBlank
+  @Size(max = 50)
+  @Email
+  private String email;
+
+  @NotBlank
+  @Size(max = 120)
+  private String password;
+  
+  private String resetToken;
+  private LocalDateTime tokenExpiration;
+
+  @DBRef
+  private Set<Role> roles = new HashSet<>();
+  
+  @DBRef
+  private UserProfile userProfile;
+  
+  @DBRef
+  private Organization organization = new Organization();
+  
+  private String status;
+  
+  private String lastLogin;
+  
+  private String failedLoginAtetmpts;
+
+  public User() {
+  }
+
+  public User(String username, String email, String password) {
+    this.username = username;
+    this.email = email;
+    this.password = password;
+  }
+
+  public String getId() {
+    return id;
+  }
+
+  public void setId(String id) {
+    this.id = id;
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
+  public String getEmail() {
+    return email;
+  }
+
+  public void setEmail(String email) {
+    this.email = email;
+  }
+
+  // Return a masked password when requested
+  public String getPassword() {
+      return password;
+  }
+
+  public void setPassword(String password) {
+    this.password = password;
+  }
+
+  public Set<Role> getRoles() {
+    return roles;
+  }
+
+  public void setRoles(Set<Role> roles) {
+    this.roles = roles;
+  }
+}
+
+// File: src/main/java/com/in/security/models/UserProfile.java
+
+package com.in.security.models;
+
+
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Document(collection = "user_profiles")
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class UserProfile {
+    
+	@Id
+    private String id;
+	@Field(name = "userId")
+    private String userId;
+    @Field(name = "first_name")
+    private String firstName;
+    @Field(name = "last_name")
+    private String lastName;
+    @Field(name = "email")
+    private String email;
+    @Field(name = "phone_number")
+    private String phoneNumber;
+    @Field(name = "address")
+    private String address;
+    @Field(name = "user_name")
+    private String userName;
+    @Field(name = "interests")
+    private String interests;
+    @Field(name = "profile_picture")
+    private String profilePicture;
+    @Field(name = "city")
+    private String city;
+    @Field(name = "status")
+    private String status;
+  
+}
+
+// File: src/main/java/com/in/security/util/AppConstants.java
+
+package com.in.security.util;
+
+public class AppConstants {
+	
+	private AppConstants() {
+		
+	}
+	public static final String ROLE_NOTFOUND="Error: Role is not found.";
+
+}
+
+// File: src/main/java/com/in/security/util/OtpUtil.java
+
+package com.in.security.util;
+
+import java.security.SecureRandom;
+
+public class OtpUtil {
+
+    private static final int OTP_LENGTH = 6;
+    private static final SecureRandom secureRandom = new SecureRandom();
+
+    public static String generateOTP() {
+        StringBuilder otp = new StringBuilder();
+        for (int i = 0; i < OTP_LENGTH; i++) {
+            otp.append(secureRandom.nextInt(10)); // Random digit 0-9
+        }
+        return otp.toString();
+    }
+
+    public static long getExpirationTime(int minutes) {
+        return System.currentTimeMillis() + (minutes * 60 * 1000); // Set expiration in minutes
+    }
+}
+
+
+Java Files from src/test/java:
+
+
+// File: src/test/java/com/in/auth/controller/AuthControllerTest.java
+
+package com.in.auth.controller;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.in.auth.payload.request.LoginRequest;
+import com.in.auth.payload.request.SignupRequest;
+import com.in.auth.repository.RoleRepository;
+import com.in.auth.repository.UserRepository;
+import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.test.TestResultLoggerExtension;
+import com.in.security.jwt.JwtUtils;
+import com.in.security.models.ERole;
+import com.in.security.models.Role;
+import com.in.security.models.User;
+
+/**
+ * Comprehensive test class for the AuthController.
+ * This class tests the authentication and registration endpoints.
+ */
+@SpringBootTest 
+@AutoConfigureMockMvc // Automatically configures MockMvc
+@ExtendWith(TestResultLoggerExtension.class) // Extends the test with our custom TestResultLoggerExtension
+public class AuthControllerTest {
+
+    // Logger for this test class
+    private static final Logger logger = LoggerFactory.getLogger(AuthControllerTest.class);
+
+    @Autowired
+    private MockMvc mockMvc; // MockMvc is used to perform and verify HTTP requests and responses
+
+    @Autowired
+    private ObjectMapper objectMapper; // ObjectMapper is used to convert Java objects to JSON and vice versa
+
+    // Mock beans are used to simulate the behavior of these components without actually invoking them
+    @MockBean
+    private AuthenticationManager authenticationManager;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    @MockBean
+    private RoleRepository roleRepository;
+
+    @MockBean
+    private PasswordEncoder encoder;
+
+    @MockBean
+    private JwtUtils jwtUtils;
+
+    // These objects will be used across multiple tests
+    private LoginRequest validLoginRequest;
+    private SignupRequest validSignupRequest;
+
+    /**
+     * Set up test data before each test method.
+     */
+    @BeforeEach
+    public void setup() {
+        // Initialize a valid login request
+        validLoginRequest = new LoginRequest("testuser", "testpassword");
+
+        // Initialize a valid signup request
+        validSignupRequest = new SignupRequest("newuser", "newuser@example.com", new HashSet<>(Collections.singletonList("user")));
+        validSignupRequest.setPassword("newpassword");
+    }
+
+    /**
+     * Test successful user authentication.
+     * This test verifies that a user can successfully authenticate and receive a JWT token.
+     */
+    @Test
+    @DisplayName("Authenticate User - Success")
+    public void testAuthenticateUser_Success() throws Exception {
+        // Arrange: Set up the test scenario
+        UserDetailsImpl userDetails = new UserDetailsImpl("1", "testuser", "test@example.com", "testpassword", Collections.emptyList());
+        Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null);
+        
+        // Mock the behavior of the authentication manager and JWT utils
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(jwtUtils.generateToken(any(UserDetailsImpl.class))).thenReturn("test.jwt.token");
+
+        // Act and Assert: Perform the request and verify the response
+        mockMvc.perform(post("/securitymanagement/api/auth/signin")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validLoginRequest)))
+                .andExpect(status().isOk()) // Expect a 200 OK status
+                .andExpect(header().string("Authorization", "test.jwt.token")) // Verify the JWT token in the header
+                .andExpect(jsonPath("$.username").value("testuser")) // Verify the username in the response body
+                .andExpect(jsonPath("$.email").value("test@example.com")); // Verify the email in the response body
+
+        // Verify that the authentication manager was called with the correct credentials
+        verify(authenticationManager).authenticate(
+                new UsernamePasswordAuthenticationToken(validLoginRequest.getUsername(), validLoginRequest.getPassword()));
+    }
+
+    /**
+     * Test authentication failure due to invalid credentials.
+     * This test verifies that the system correctly handles authentication attempts with invalid credentials.
+     */
+    @Test
+    @DisplayName("Authenticate User - Invalid Credentials")
+    public void testAuthenticateUser_InvalidCredentials() throws Exception {
+        // Arrange: Set up the test scenario for invalid credentials
+        when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("Invalid credentials"));
+
+        // Act and Assert: Perform the request with invalid credentials and verify the response
+        mockMvc.perform(post("/securitymanagement/api/auth/signin")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validLoginRequest)))
+                .andExpect(status().isUnauthorized()); // Expect a 401 Unauthorized status
+
+        // Verify that the authentication manager was called with the provided credentials
+        verify(authenticationManager).authenticate(
+                new UsernamePasswordAuthenticationToken(validLoginRequest.getUsername(), validLoginRequest.getPassword()));
+    }
+
+    /**
+     * Test successful user registration.
+     * This test verifies that a new user can be successfully registered in the system.
+     */
+    @Test
+    @DisplayName("Register User - Success")
+    public void testRegisterUser_Success() throws Exception {
+        // Arrange: Set up the test scenario for successful user registration
+        when(userRepository.existsByUsername(validSignupRequest.getUsername())).thenReturn(false);
+        when(userRepository.existsByEmail(validSignupRequest.getEmail())).thenReturn(false);
+        when(roleRepository.findByName(ERole.ROLE_USER)).thenReturn(Optional.of(new Role(ERole.ROLE_USER)));
+        when(encoder.encode(validSignupRequest.getPassword())).thenReturn("encodedPassword");
+        when(userRepository.save(any(User.class))).thenReturn(new User(validSignupRequest.getUsername(), validSignupRequest.getEmail(), "encodedPassword"));
+
+        // Act and Assert: Perform the signup request and verify the response
+        mockMvc.perform(post("/securitymanagement/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validSignupRequest)))
+                .andExpect(status().isOk()) // Expect a 200 OK status
+                .andExpect(jsonPath("$.message").value("User registered successfully!")); // Verify the success message
+
+        // Verify that the user repository was called to save the new user
+        verify(userRepository).save(any(User.class));
+    }
+
+    /**
+     * Test registration failure due to username already taken.
+     * This test verifies that the system correctly handles registration attempts with an existing username.
+     */
+    @Test
+    @DisplayName("Register User - Username Already Taken")
+    public void testRegisterUser_UsernameAlreadyTaken() throws Exception {
+        // Arrange: Set up the test scenario for a username that's already taken
+        when(userRepository.existsByUsername(validSignupRequest.getUsername())).thenReturn(true);
+
+        // Act and Assert: Perform the signup request and verify the response
+        mockMvc.perform(post("/securitymanagement/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validSignupRequest)))
+                .andExpect(status().isBadRequest()) // Expect a 400 Bad Request status
+                .andExpect(jsonPath("$.message").value("Error: Username is already taken! " + validSignupRequest.getUsername()));
+
+        // Verify that the user repository was not called to save the user
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    /**
+     * Test registration failure due to email already in use.
+     * This test verifies that the system correctly handles registration attempts with an existing email.
+     */
+    @Test
+    @DisplayName("Register User - Email Already in Use")
+    public void testRegisterUser_EmailAlreadyInUse() throws Exception {
+        // Arrange: Set up the test scenario for an email that's already in use
+        when(userRepository.existsByUsername(validSignupRequest.getUsername())).thenReturn(false);
+        when(userRepository.existsByEmail(validSignupRequest.getEmail())).thenReturn(true);
+
+        // Act and Assert: Perform the signup request and verify the response
+        mockMvc.perform(post("/securitymanagement/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validSignupRequest)))
+                .andExpect(status().isBadRequest()) // Expect a 400 Bad Request status
+                .andExpect(jsonPath("$.message").value("Error: Email is already in use!"));
+
+        // Verify that the user repository was not called to save the user
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    /**
+     * Test registration failure due to role not found.
+     * This test verifies that the system correctly handles registration attempts when the default role is not found.
+     */
+    @Test
+    @DisplayName("Register User - Role Not Found")
+    public void testRegisterUser_RoleNotFound() throws Exception {
+        // Arrange: Set up the test scenario where the user role is not found
+        when(userRepository.existsByUsername(validSignupRequest.getUsername())).thenReturn(false);
+        when(userRepository.existsByEmail(validSignupRequest.getEmail())).thenReturn(false);
+        when(roleRepository.findByName(ERole.ROLE_USER)).thenReturn(Optional.empty());
+
+        // Act and Assert: Perform the signup request and verify the response
+        mockMvc.perform(post("/securitymanagement/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validSignupRequest)))
+                .andExpect(status().isInternalServerError()); // Expect a 500 Internal Server Error status
+
+        // Verify that the user repository was not called to save the user
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    /**
+     * Print a summary of all test results after all tests have completed.
+     */
+    @AfterAll
+    static void printTestSummary() {
+        List<String> testResults = TestResultLoggerExtension.getTestResults();
+        logger.info("==== Test Summary ====");
+        int totalTests = testResults.size();
+        long passedTests = testResults.stream().filter(result -> result.contains("PASSED")).count();
+        logger.info("Total Tests: {}", totalTests);
+        logger.info("Passed: {}", passedTests);
+        logger.info("Failed: {}", totalTests - passedTests);
+        logger.info("==== Detailed Results ====");
+        testResults.forEach(logger::info);
+    }
+}
+// File: src/test/java/com/in/auth/service/UserDetailsServiceImplTest.java
+
+package com.in.auth.service;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+
+import com.in.auth.repository.UserRepository;
+import com.in.security.models.ERole;
+import com.in.security.models.Role;
+import com.in.security.models.User;
+import com.in.auth.test.TestResultLoggerExtension;
+
+/**
+ * Comprehensive test class for the UserDetailsServiceImpl.
+ * This class tests the user details loading functionality.
+ */
+@SpringBootTest
+@ExtendWith(TestResultLoggerExtension.class)
+public class UserDetailsServiceImplTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserDetailsServiceImplTest.class);
+
+    @Autowired
+    private UserDetailsServiceImpl userDetailsService;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    private User testUser;
+
+    /**
+     * Set up test data before each test method.
+     */
+    @BeforeEach
+    public void setup() {
+        // Initialize a test user with a role
+        testUser = new User("testuser", "test@example.com", "password");
+        testUser.setId("1");
+        Role userRole = new Role(ERole.ROLE_USER);
+        testUser.setRoles(Collections.singleton(userRole));
+    }
+
+    /**
+     * Test successful loading of user details.
+     * This test verifies that a user can be successfully loaded by username.
+     */
+    @Test
+    @DisplayName("Load User By Username - Success")
+    public void testLoadUserByUsername_Success() {
+        // Arrange
+        when(userRepository.findByUsername("testuser")).thenReturn(Optional.of(testUser));
+
+        // Act
+        UserDetails userDetails = userDetailsService.loadUserByUsername("testuser");
+
+        // Assert
+        assertNotNull(userDetails, "UserDetails should not be null");
+        assertEquals("testuser", userDetails.getUsername(), "Username should match");
+        assertEquals("password", userDetails.getPassword(), "Password should match");
+        assertTrue(userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_USER")), "User should have ROLE_USER authority");
+
+        // Verify that the user repository was called
+        verify(userRepository).findByUsername("testuser");
+    }
+
+    /**
+     * Test loading user details with a non-existent username.
+     * This test verifies that the correct exception is thrown when a user is not found.
+     */
+    @Test
+    @DisplayName("Load User By Username - User Not Found")
+    public void testLoadUserByUsername_UserNotFound() {
+        // Arrange
+        when(userRepository.findByUsername("nonexistent")).thenReturn(Optional.empty());
+
+        // Act & Assert
+        Exception exception = assertThrows(UsernameNotFoundException.class, () -> {
+            userDetailsService.loadUserByUsername("nonexistent");
+        }, "Should throw UsernameNotFoundException");
+
+        assertEquals("User Not Found with username: nonexistent", exception.getMessage(),
+                "Exception message should match");
+
+        // Verify that the user repository was called
+        verify(userRepository).findByUsername("nonexistent");
+    }
+
+    /**
+     * Test loading user details with a null username.
+     * This test verifies that the service handles null input by throwing a UsernameNotFoundException.
+     */
+    @Test
+    @DisplayName("Load User By Username - Null Username")
+    public void testLoadUserByUsername_NullUsername() {
+        // Act & Assert
+        Exception exception = assertThrows(UsernameNotFoundException.class, () -> {
+            userDetailsService.loadUserByUsername(null);
+        }, "Should throw UsernameNotFoundException for null username");
+
+        assertEquals("User Not Found with username: null", exception.getMessage(),
+                "Exception message should match");
+
+        // Verify that the user repository was not called
+        verify(userRepository, never()).findByUsername(any());
+    }
+    /**
+     * Test loading user details for a user with multiple roles.
+     * This test verifies that all roles are correctly mapped to authorities.
+     */
+    @Test
+    @DisplayName("Load User By Username - Multiple Roles")
+    public void testLoadUserByUsername_MultipleRoles() {
+        // Arrange
+        User multiRoleUser = new User("multiuser", "multi@example.com", "password");
+        multiRoleUser.setId("2");
+        multiRoleUser.setRoles(Set.of(new Role(ERole.ROLE_USER), new Role(ERole.ROLE_ADMIN)));
+        when(userRepository.findByUsername("multiuser")).thenReturn(Optional.of(multiRoleUser));
+
+        // Act
+        UserDetails userDetails = userDetailsService.loadUserByUsername("multiuser");
+
+        // Assert
+        assertNotNull(userDetails, "UserDetails should not be null");
+        assertEquals("multiuser", userDetails.getUsername(), "Username should match");
+        assertEquals(2, userDetails.getAuthorities().size(), "User should have 2 authorities");
+        assertTrue(userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_USER")), "User should have ROLE_USER authority");
+        assertTrue(userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")), "User should have ROLE_ADMIN authority");
+
+        // Verify that the user repository was called
+        verify(userRepository).findByUsername("multiuser");
+    }
+
+
+    /**
+     * Print a summary of all test results after all tests have completed.
+     */
+    @AfterAll
+    static void printTestSummary() {
+        List<String> testResults = TestResultLoggerExtension.getTestResults();
+        logger.info("==== Test Summary ====");
+        int totalTests = testResults.size();
+        long passedTests = testResults.stream().filter(result -> result.contains("PASSED")).count();
+        logger.info("Total Tests: {}", totalTests);
+        logger.info("Passed: {}", passedTests);
+        logger.info("Failed: {}", totalTests - passedTests);
+        logger.info("==== Detailed Results ====");
+        testResults.forEach(logger::info);
+    }
+}
+// File: src/test/java/com/in/auth/test/TestResultLoggerExtension.java
+
+package com.in.auth.test;
+
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.TestWatcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Custom TestWatcher extension to log test results.
+ */
+public class TestResultLoggerExtension implements TestWatcher {
+
+    private static final Logger logger = LoggerFactory.getLogger(TestResultLoggerExtension.class);
+
+    // Static list to store test results across all tests
+    private static List<String> testResults = new ArrayList<>();
+
+    @Override
+    public void testSuccessful(ExtensionContext context) {
+        String testName = context.getDisplayName();
+        String logMessage = String.format("Test: %s - PASSED", testName);
+        logger.info(logMessage);
+        testResults.add(logMessage);
+    }
+
+    @Override
+    public void testFailed(ExtensionContext context, Throwable cause) {
+        String testName = context.getDisplayName();
+        String logMessage = String.format("Test: %s - FAILED - Reason: %s", testName, cause.getMessage());
+        logger.info(logMessage);
+        testResults.add(logMessage);
+    }
+
+    /**
+     * Provides access to the test results.
+     * @return List of test result messages.
+     */
+    public static List<String> getTestResults() {
+        return testResults;
+    }
+}
+// File: src/test/java/com/in/security/jwt/AuthTokenFilterTest.java
+
+// File: src/test/java/com/in/security/jwt/AuthTokenFilterTest.java
+
+package com.in.security.jwt;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+// Import MockitoExtension to enable Mockito annotations
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.service.UserDetailsServiceImpl;
+import com.in.auth.test.TestResultLoggerExtension;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * Comprehensive test class for the AuthTokenFilter.
+ * This class tests the doFilterInternal method for various scenarios.
+ */
+@ExtendWith(MockitoExtension.class) // Enable Mockito annotations
+@ExtendWith(TestResultLoggerExtension.class) // Custom extension for logging
+public class AuthTokenFilterTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthTokenFilterTest.class);
+
+    @InjectMocks
+    private AuthTokenFilter authTokenFilter;
+
+    @Mock
+    private JwtUtils jwtUtils;
+
+    @Mock
+    private UserDetailsServiceImpl userDetailsService;
+
+    @Mock
+    private HttpServletRequest request;
+
+    @Mock
+    private HttpServletResponse response;
+
+    @Mock
+    private FilterChain filterChain;
+
+    private UserDetailsImpl userDetails;
+
+    /**
+     * Set up test data and inject mocks into private fields.
+     */
+    @BeforeEach
+    public void setUp() {
+        // Initialize a test user
+        userDetails = new UserDetailsImpl("1", "testuser", "test@example.com", "password", Collections.emptyList());
+
+        // Inject mocks into the private fields of authTokenFilter
+       // Uses ReflectionTestUtils.setField to inject the mocked jwtUtils and userDetailsService into the authTokenFilter
+       // This is necessary because these fields are private and don't have setters
+        ReflectionTestUtils.setField(authTokenFilter, "jwtUtils", jwtUtils);
+        ReflectionTestUtils.setField(authTokenFilter, "userDetailsService", userDetailsService);
+    }
+
+    /**
+     * Test case for a valid JWT token.
+     * Expectation: Authentication should be set in the SecurityContextHolder.
+     */
+    @Test
+    @DisplayName("doFilterInternal - Valid JWT Token")
+    public void testDoFilterInternal_ValidToken() throws ServletException, IOException {
+        // Arrange
+        String token = "valid.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        when(jwtUtils.validateJwtToken(token)).thenReturn(true);
+        when(jwtUtils.getUserNameFromJwtToken(token)).thenReturn("testuser");
+        when(userDetailsService.loadUserByUsername("testuser")).thenReturn(userDetails);
+
+        // Act
+        authTokenFilter.doFilterInternal(request, response, filterChain);
+
+        // Assert
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication(), "Authentication should be set");
+        assertEquals("testuser", SecurityContextHolder.getContext().getAuthentication().getName(), "Username should match");
+        verify(filterChain).doFilter(request, response);
+    }
+
+    /**
+     * Test case for an invalid JWT token.
+     * Expectation: Authentication should not be set in the SecurityContextHolder.
+     */
+    @Test
+    @DisplayName("doFilterInternal - Invalid JWT Token")
+    public void testDoFilterInternal_InvalidToken() throws ServletException, IOException {
+        // Arrange
+        String token = "invalid.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        when(jwtUtils.validateJwtToken(token)).thenReturn(false);
+
+        // Act
+        authTokenFilter.doFilterInternal(request, response, filterChain);
+
+        // Assert
+        assertNull(SecurityContextHolder.getContext().getAuthentication(), "Authentication should not be set");
+        verify(filterChain).doFilter(request, response);
+    }
+
+    /**
+     * Test case for missing JWT token.
+     * Expectation: Authentication should not be set in the SecurityContextHolder.
+     */
+    @Test
+    @DisplayName("doFilterInternal - Missing JWT Token")
+    public void testDoFilterInternal_MissingToken() throws ServletException, IOException {
+        // Arrange
+        when(request.getHeader("Authorization")).thenReturn(null);
+
+        // Act
+        authTokenFilter.doFilterInternal(request, response, filterChain);
+
+        // Assert
+        assertNull(SecurityContextHolder.getContext().getAuthentication(), "Authentication should not be set");
+        verify(filterChain).doFilter(request, response);
+    }
+
+    /**
+     * Test case for expired JWT token.
+     * Expectation: Authentication should not be set, exception should be handled gracefully.
+     */
+    @Test
+    @DisplayName("doFilterInternal - Expired JWT Token")
+    public void testDoFilterInternal_ExpiredToken() throws ServletException, IOException {
+        // Arrange
+        String token = "expired.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        doThrow(new RuntimeException("JWT token is expired")).when(jwtUtils).validateJwtToken(token);
+
+        // Act
+        authTokenFilter.doFilterInternal(request, response, filterChain);
+
+        // Assert
+        assertNull(SecurityContextHolder.getContext().getAuthentication(), "Authentication should not be set");
+        verify(filterChain).doFilter(request, response);
+        // Verify that the exception message is set as a request attribute
+        verify(request).setAttribute("JWT_MSG", "JWT token is expired");
+    }
+
+    /**
+     * Test case when an exception occurs during authentication.
+     * Expectation: Exception should be caught, and authentication should not be set.
+     */
+    @Test
+    @DisplayName("doFilterInternal - Exception Handling")
+    public void testDoFilterInternal_ExceptionHandling() throws ServletException, IOException {
+        // Arrange
+        String token = "some.jwt.token";
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
+        doThrow(new RuntimeException("Unexpected error")).when(jwtUtils).validateJwtToken(token);
+
+        // Act
+        authTokenFilter.doFilterInternal(request, response, filterChain);
+
+        // Assert
+        assertNull(SecurityContextHolder.getContext().getAuthentication(), "Authentication should not be set");
+        verify(filterChain).doFilter(request, response);
+        verify(request).setAttribute("JWT_MSG", "Unexpected error");
+    }
+
+    /**
+     * Clean up after all tests.
+     * Print a summary of all test results.
+     */
+    @AfterAll
+    static void printTestSummary() {
+        // Retrieve test results from the custom TestResultLoggerExtension
+        List<String> testResults = TestResultLoggerExtension.getTestResults();
+
+        logger.info("==== Test Summary ====");
+        int totalTests = testResults.size();
+        long passedTests = testResults.stream().filter(result -> result.contains("PASSED")).count();
+        logger.info("Total Tests: {}", totalTests);
+        logger.info("Passed: {}", passedTests);
+        logger.info("Failed: {}", totalTests - passedTests);
+        logger.info("==== Detailed Results ====");
+        testResults.forEach(logger::info);
+    }
+}
+
+// File: src/test/java/com/in/security/jwt/JwtUtilsTest.java
+
+package com.in.security.jwt;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.util.Date;
+import java.util.List;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.core.Authentication;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.in.auth.service.UserDetailsImpl;
+import com.in.auth.test.TestResultLoggerExtension;
+
+import io.jsonwebtoken.ExpiredJwtException;
+
+/**
+ * Comprehensive test class for the JwtUtils.
+ * This class tests JWT token generation, validation, and parsing.
+ */
+@SpringBootTest
+@ExtendWith(TestResultLoggerExtension.class)
+public class JwtUtilsTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(JwtUtilsTest.class);
+
+    @Autowired
+    private JwtUtils jwtUtils;
+
+    @Mock
+    private Authentication authentication;
+
+    private UserDetailsImpl userDetails;
+    private static final String TEST_JWT_SECRET = "testSecretKeyWhichIsLongEnoughForHS256Algorithm";
+    private static final long TEST_JWT_EXPIRATION = 60000; // 1 minute
+
+    /**
+     * Set up test data and configure JwtUtils before each test method.
+     */
+    @BeforeEach
+    public void setup() {
+        userDetails = new UserDetailsImpl("1", "testuser", "test@example.com", "password", List.of());
+        ReflectionTestUtils.setField(jwtUtils, "jwtSecret", TEST_JWT_SECRET);
+        ReflectionTestUtils.setField(jwtUtils, "jwtExpirationMs", TEST_JWT_EXPIRATION);
+    }
+
+    /**
+     * Test successful JWT token generation.
+     * This test verifies that a token can be generated for a valid user.
+     */
+    @Test
+    @DisplayName("Generate Token - Success")
+    public void testGenerateToken_Success() {
+        // Arrange
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+
+        // Act
+        String token = jwtUtils.generateToken(userDetails);
+
+        // Assert
+        assertNotNull(token, "Generated token should not be null");
+        assertTrue(token.length() > 0, "Generated token should not be empty");
+    }
+
+    /**
+     * Test successful JWT token validation.
+     * This test verifies that a valid token can be successfully validated.
+     */
+    @Test
+    @DisplayName("Validate Token - Success")
+    public void testValidateJwtToken_Success() {
+        // Arrange
+        String token = jwtUtils.generateToken(userDetails);
+
+        // Act
+        boolean isValid = jwtUtils.validateJwtToken(token);
+
+        // Assert
+        assertTrue(isValid, "Token should be valid");
+    }
+
+    /**
+     * Test JWT token validation with an expired token.
+     * This test verifies that an expired token is correctly identified as invalid.
+     */
+    @Test
+    @DisplayName("Validate Token - Expired")
+    public void testValidateJwtToken_Expired() {
+        // Arrange
+        ReflectionTestUtils.setField(jwtUtils, "jwtExpirationMs", 1); // Set expiration to 1ms
+        String token = jwtUtils.generateToken(userDetails);
+
+        // Act & Assert
+        assertFalse(jwtUtils.validateJwtToken(token), "Expired token should be invalid");
+    }
+
+    /**
+     * Test JWT token validation with an invalid token.
+     * This test verifies that an improperly formatted token is identified as invalid.
+     */
+    @Test
+    @DisplayName("Validate Token - Invalid Format")
+    public void testValidateJwtToken_InvalidFormat() {
+        // Arrange
+        String invalidToken = "invalid.token.format";
+
+        // Act & Assert
+        assertFalse(jwtUtils.validateJwtToken(invalidToken), "Improperly formatted token should be invalid");
+    }
+
+    /**
+     * Test extracting username from a valid JWT token.
+     * This test verifies that the correct username can be extracted from a valid token.
+     */
+    @Test
+    @DisplayName("Get Username From Token - Success")
+    public void testGetUserNameFromJwtToken_Success() {
+        // Arrange
+        String token = jwtUtils.generateToken(userDetails);
+
+        // Act
+        String extractedUsername = jwtUtils.getUserNameFromJwtToken(token);
+
+        // Assert
+        assertEquals(userDetails.getUsername(), extractedUsername, "Extracted username should match the original");
+    }
+
+    /**
+     * Test extracting username from an expired JWT token.
+     * This test verifies that attempting to extract a username from an expired token throws an exception.
+     */
+    @Test
+    @DisplayName("Get Username From Token - Expired Token")
+    public void testGetUserNameFromJwtToken_ExpiredToken() {
+        // Arrange
+        ReflectionTestUtils.setField(jwtUtils, "jwtExpirationMs", 1); // Set expiration to 1ms
+        String token = jwtUtils.generateToken(userDetails);
+
+        // Act & Assert
+        assertThrows(ExpiredJwtException.class, () -> jwtUtils.getUserNameFromJwtToken(token),
+                "Extracting username from expired token should throw ExpiredJwtException");
+    }
+
+    /**
+     * Print a summary of all test results after all tests have completed.
+     */
+    @AfterAll
+    static void printTestSummary() {
+        List<String> testResults = TestResultLoggerExtension.getTestResults();
+        logger.info("==== Test Summary ====");
+        int totalTests = testResults.size();
+        long passedTests = testResults.stream().filter(result -> result.contains("PASSED")).count();
+        logger.info("Total Tests: {}", totalTests);
+        logger.info("Passed: {}", passedTests);
+        logger.info("Failed: {}", totalTests - passedTests);
+        logger.info("==== Detailed Results ====");
+        testResults.forEach(logger::info);
+    }
+}
+
+Resource Files from src/main/resources:
+
+
+// File: src/main/resources/application.yml
+
+server:
+  port: 8091
+spring:
+  application:
+    name: identity-security-management
+  data:
+    mongodb:
+      uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin
+      #uri: mongodb://localhost:27017/identityManagement
+      socketTimeout: 60000
+      connectTimeout: 60000
+      serverSelectionTimeout: 60000
+      auto-index-creation: true
+      auto-create-collections: true   
+    redis:
+      host: 139.59.67.255
+      port: 6379
+      password: work4uneo
+
+identity:
+  disable2FA:
+    allowed-roles:
+       - ROLE_SUPERADMIN
+
+# Email API configuration
+email:
+  api:
+    base-url: http://139.59.67.255:8093/communication/emails
+    password-reset-url: http://146.190.11.82:5173/signin/reset-password
+
+eureka:
+  instance:
+    preferIpAddress: true
+    ip-address: ${IDENTITY_IP:localhost}
+  client:
+    tls:
+      enabled: true
+      trust-store: classpath:certs/compliance-gateway-truststore.p12
+      trust-store-password: passw0rd
+      trust-store-type: PKCS12
+      key-store: classpath:certs/compliance-gateway-truststore.p12
+      key-store-password: passw0rd
+      key-store-type: PKCS12
+    serviceUrl:
+      defaultZone: https://139.59.40.176:8761/eureka/
+      #defaultZone: https://localhost:8761/eureka/
+
+security:
+  app:
+    jwtCookieName: neocompliance
+    jwtSecret: ${JWT_SECRET:3neo38792F423F4428472B4B6250655368566D597133743677397A244326test}
+    jwtExpirationMs: 86400000
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.in: DEBUG
+  file:
+    name: /root/webapp/identity-management.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+
+Resource Files from src/test/resources:
+
+
+
+POM File (pom.xml):
+
+
+// File: pom.xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.3.3</version>
+		<relativePath /> <!-- lookup parent from repository -->
+	</parent>
+	<groupId>com.in</groupId>
+	<artifactId>identity-security-management</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<name>identity-security-management</name>
+	<description>identity-security-management springboot app</description>
+	<url />
+	<licenses>
+		<license />
+	</licenses>
+	<developers>
+		<developer />
+	</developers>
+	<scm>
+		<connection />
+		<developerConnection />
+		<tag />
+		<url />
+	</scm>
+	<properties>
+		<java.version>17</java.version>
+	</properties>
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <optional>true</optional>
+        </dependency>
+			<dependency>
+			<groupId>org.mongodb</groupId>
+			<artifactId>mongodb-driver-sync</artifactId>
+			<version>5.1.3</version>
+		</dependency>
+		
+				<dependency>
+		    <groupId>org.mockito</groupId>
+		    <artifactId>mockito-core</artifactId>
+		    <version>5.4.0</version>
+		    <scope>test</scope>
+		</dependency>
+		
+				<!-- https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-starter-netflix-eureka-client -->
+		<dependency>
+		    <groupId>org.springframework.cloud</groupId>
+		    <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+		    <version>4.1.3</version>
+		</dependency>
+
+		
+		<dependency>
+		    <groupId>org.mockito</groupId>
+		    <artifactId>mockito-junit-jupiter</artifactId>
+		    <version>5.4.0</version>
+		    <scope>test</scope>
+		</dependency>
+		<!-- Added for WebClient support -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+		<!-- https://mvnrepository.com/artifact/org.springdoc/springdoc-openapi-starter-webmvc-ui -->
+		<dependency>
+		    <groupId>org.springdoc</groupId>
+		    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+		    <version>2.6.0</version>
+		</dependency>
+
+
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-mongodb</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<dependency>
+    <groupId>redis.clients</groupId>
+    <artifactId>jedis</artifactId>
+    <version>4.2.3</version> <!-- Use the latest version -->
+</dependency>
+<!-- Redis for OTP storage -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-mail</artifactId>
+</dependency>
+
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+		</dependency>
+		<!-- https://mvnrepository.com/artifact/io.jsonwebtoken/jjwt -->
+	<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>0.11.5</version>
+		</dependency>
+
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>0.11.5</version>
+			<scope>runtime</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.projectreactor</groupId>
+			<artifactId>reactor-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-configuration-processor</artifactId>
+			<optional>true</optional>
+		</dependency>
+		<dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi-ooxml</artifactId>
+        <version>5.2.3</version>
+        </dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<excludes>
+						<exclude>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

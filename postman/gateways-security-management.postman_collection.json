@@ -1,0 +1,76 @@
+{
+	"info": {
+		"_postman_id": "c565dc67-b105-4404-9191-942e7a444695",
+		"name": "gateways-security-management",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "38045752",
+		"_collection_link": "https://volentri.postman.co/workspace/Voluntri-Workspace~182ca93a-773e-47b6-9cc8-4ec322096014/collection/38045752-c565dc67-b105-4404-9191-942e7a444695?action=share&source=collection_link&creator=38045752"
+	},
+	"item": [
+		{
+			"name": "signup",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"username\": \"newuser1\",\r\n  \"email\": \"newuser1@example.com\",\r\n  \"password\": \"password123\",\r\n  \"roles\": [\"user\"]  // Optional; can be omitted to default to ROLE_USER\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://139.59.50.127:8080/securitymanagement/api/auth/signup",
+					"protocol": "http",
+					"host": [
+						"139",
+						"59",
+						"50",
+						"127"
+					],
+					"port": "8080",
+					"path": [
+						"securitymanagement",
+						"api",
+						"auth",
+						"signup"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "signin",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"username\":\"newuser1\",\"password\":\"password123\"}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/securitymanagement/api/auth/signin",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"securitymanagement",
+						"api",
+						"auth",
+						"signin"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

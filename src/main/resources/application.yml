@@ -1,0 +1,64 @@
+server:
+  port: 8091
+spring:
+  application:
+    name: identity-security-management
+  data:
+    mongodb:
+      uri: mongodb+srv://consent_mgr:yWjG5WRnCrFS9FvH@ctms.gdgdehg.mongodb.net/identityManagement?retryWrites=true&w=majority&tls=true&authSource=admin;
+      #uri: mongodb+srv://kartz1011:PztZoA2j8Xac5KlV@est-cluster.frxbfcu.mongodb.net/identityManagement?tls=true&authSource=admin
+      #uri: mongodb://localhost:27017/identityManagement
+      socketTimeout: 60000
+      connectTimeout: 60000
+      serverSelectionTimeout: 60000
+      auto-index-creation: true
+      auto-create-collections: true   
+    redis:
+      host: api.fignos.com
+      port: 6379
+      password: work4uneo
+
+identity:
+  disable2FA:
+    allowed-roles:
+       - ROLE_SUPERADMIN
+
+# Email API configuration
+email:
+  api:
+    base-url: http://api.fignos.com:8093/api/communication/emails
+    password-reset-url: https://api.fignos.com/identitymanagement/api/auth/reset-password
+
+eureka:
+  instance:
+    preferIpAddress: true
+    ip-address: ${IDENTITY_IP:localhost}
+  client:
+    tls:
+      enabled: true
+      trust-store: classpath:certs/compliance-gateway-truststore.p12
+      trust-store-password: passw0rd
+      trust-store-type: PKCS12
+      key-store: classpath:certs/compliance-gateway-truststore.p12
+      key-store-password: passw0rd
+      key-store-type: PKCS12
+    serviceUrl:
+      defaultZone: https://api.fignos.com:8761/eureka/
+      #defaultZone: https://localhost:8761/eureka/
+
+security:
+  app:
+    jwtCookieName: neocompliance
+    jwtSecret: ${JWT_SECRET:3neo38792F423F4428472B4B6250655368566D597133743677397A244326test}
+    jwtExpirationMs: 86400000
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.in: DEBUG
+  file:
+    name: /root/webapp/identity-management.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
